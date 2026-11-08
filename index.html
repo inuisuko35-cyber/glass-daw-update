@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611081247">
+<meta name="gd-build" content="202611081311">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -8103,14 +8103,14 @@ function kocBeatNotes() {
 async function addKitPads(pack) {
   const K = KIT_PADS[pack]; if (pack !== 'perc') fbTempo(); ensureAC(); toast('キットを読み込んでいます…', 1500);
   const ids = {};
-  try { for (const [nt, [cat, file]] of Object.entries(K.map)) ids[nt] = (await kitSource(pack, cat, file)).id; }
+  try { for (const [nt, [cat, file, pk]] of Object.entries(K.map)) ids[nt] = (await kitSource(pk || pack, cat, file)).id; }
   catch (e) { toast('キットの音が見つかりませんでした（Windows版のフォルダごと展開されているか確認してください）', 5000); return null; }
   let tr;
   act(() => {
     tr = newTrack(K.name, 'midi'); tr.inst = newInst('pads'); tr.arp = { ...ARP_DEF }; tr.color = K.color; tr.inst.p.vol = -4; // the samples peak at 0 dB, leave room for the mix
     const pads = tr.inst.p.pads;
-    for (const nt of Object.keys(K.map)) { const pd = pads[nt - 36]; pd.src = ids[nt]; pd.name = padNm(SRC.get(ids[nt]).name); pd.def = false; }
-    const c = newMidiClip(tr, barFloor(UI.pos + 1e-6), 2); c.name = K.name + 'ビート'; c.notes = pack === 'koc' ? kocBeatNotes() : pack === 'perc' ? percBeatNotes() : fbBeatNotes(); UI.sel = new Set([c.id]);
+    for (const nt of Object.keys(K.map)) { const pd = pads[nt - 36]; pd.src = ids[nt]; pd.name = (K.names && K.names[nt]) || padNm(SRC.get(ids[nt]).name); pd.def = false; }
+    const c = newMidiClip(tr, barFloor(UI.pos + 1e-6), 2); c.name = K.name + 'ビート'; c.notes = K.beat ? K.beat() : pack === 'koc' ? kocBeatNotes() : pack === 'perc' ? percBeatNotes() : fbBeatNotes(); UI.sel = new Set([c.id]);
     UI.selTrack = tr.id; UI.tab = 'inst';
   });
   renderInsp();
@@ -8484,6 +8484,35 @@ async function addAquaAmbience(k) {
     ...['aquadrop', 'aquapluck', 'aquapad', 'aqualead'].map((k, i) => [SYN_PRESETS[k][0].replace(/（.*/, ''), SYN_PRESETS[k][0].match(/（(.*)）/)[1], ['#9fe0ff', '#c3b6ff', '#7fe0c8', '#ffd0e8'][i], () => makeInstTrack(SYN_PRESETS[k][0].replace(/（.*/, ''), newInst('synth', k))]),
     ...[5, 3, 11, 9].map(gx).filter(Boolean),
   ];
+  return r;
+}; }
+
+// 水辺ドラム: short, punchy kicks (Sqwd), claps + a snappy snare, and lots of light percussion (CC0); half-time groove
+KIT_PADS.aqua = { name: '水辺ドラム', color: '#5fd0e8', map: {
+  36: ['Kicks', '2.wav', 'sqwd'], 37: ['Kicks', '4.wav', 'sqwd'], 38: ['Claps', 'Clap rr1.wav', 'perc'], 39: ['Claps', 'Clap rr3.wav', 'perc'],
+  40: ['Snares', '6.wav', 'sqwd'], 41: ['Snares', '5.wav', 'sqwd'], 42: ['Cymbals', 'Hihat 1.wav', 'sqwd'], 43: ['Cymbals', 'Hihat 2.wav', 'sqwd'],
+  44: ['Shakers', 'ShakerHighFaster Up rr1.wav', 'perc'], 45: ['Shakers', 'ShakerHighFaster Down rr1.wav', 'perc'], 46: ['Shakers', 'Tamb1 Hit v1 rr1.wav', 'perc'], 47: ['Wood Metal', 'wood click f rr1.wav', 'perc'],
+  48: ['Wood Metal', 'Claves1 Hit v3 rr1.wav', 'perc'], 49: ['Cymbals', 'Crash 1.wav', 'sqwd'], 50: ['Sparkle', 'OceanDrum Sus 1.wav', 'perc'], 51: ['Sparkle', 'windchimes desc1.wav', 'perc'] },
+  beat: () => {
+    const n = [], N = (p, t, v, d = 0.25) => n.push({ p, t, d, v });
+    for (let bar = 0; bar < 2; bar++) {
+      const o = bar * 4;
+      (bar ? [0, 1.5, 2.5] : [0, 2.5]).forEach((t, i) => N(36, o + t, i ? 0.8 : 1));
+      N(40, o + 2, 0.85); N(38, o + 2, 0.9);                                        // the backbeat (half time: beat 3)
+      (bar ? [[3.25, 0.4], [3.75, 0.5]] : [[3.75, 0.45]]).forEach(([t, v]) => N(39, o + t, v)); // ghost claps
+      for (let i = 0; i < 8; i++) N(i % 2 ? 45 : 44, o + i / 2, i % 2 ? 0.4 : 0.55);  // shaker eighths, up / down
+      [0.5, 1.5, 2.5, 3.5].forEach(t => N(42, o + t, 0.45));                        // offbeat hats
+      N(46, o + 1, 0.4); N(46, o + 3, 0.4);                                         // light tambourine
+      N(47, o + (bar ? 3.5 : 1.75), 0.5); if (bar) N(48, o + 0.75, 0.4);            // wood ticks
+    }
+    N(51, 0, 0.5, 1);
+    return n;
+  } };
+KIT_PADS.aqua.names = { 36: 'キック', 37: 'キック（軽）', 38: 'クラップ', 39: 'クラップ（小）', 40: 'スネア', 41: 'スネア（短）', 42: 'ハット1', 43: 'ハット2', 44: 'シェイカー↑', 45: 'シェイカー↓', 46: 'タンバリン', 47: 'ウッド', 48: 'クラベス', 49: 'クラッシュ', 50: '波の音', 51: 'ウィンドチャイム' };
+KIT_PACKS.aqua = '水辺ドラム';
+{ const _ast2 = addShortcutTiles; addShortcutTiles = function (m) {
+  const r = _ast2(m);
+  if (r.aqua) r.aqua.unshift(['水辺ドラム', '締まったキック＋クラップ＋軽いパーカッション、ビートつき', '#3fb8d8', () => { UI.insertAt = null; addKitPads('aqua'); }]);
   return r;
 }; }
 

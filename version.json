@@ -1,8 +1,8 @@
 {
- "build": 202611081247,
- "sha256": "7dbfbcb43a6504f766c354752cb0cfb5e73c6e146b541158b8a2e296486823b1",
+ "build": 202611081311,
+ "sha256": "9e2b52e8b1fc7d5ac3d9d6fc81530710996b840724fe4c74f6f3d4ede8c36712",
  "shell": 2,
- "note": "水辺のFuture Bass用の音を追加（水音・森の音ループ、しずく系の音色、Vitalプリセット2つ）",
+ "note": "水辺ドラム（締まったキック＋クラップ＋軽いパーカッションのキットとビート）を追加",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
