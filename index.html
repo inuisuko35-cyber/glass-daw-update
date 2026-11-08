@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611081149">
+<meta name="gd-build" content="202611081223">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -8809,7 +8809,8 @@ async function appUpdate(manual) {
   if (manual) toast('アップデートを確認しています…', 2000);
   const r = await window.desktop.update();
   if (!r.ok) { if (manual) toast(r.error === 'no url' ? 'アップデートの取得先がまだ設定されていません' : 'アップデートを確認できませんでした（' + r.error + '）', 5000); return; }
-  if (r.latest) { if (manual) toast('最新の状態です', 2500); return; }
+  if (r.files) toast('Vitalのプリセットを' + r.files + '個追加しました（Vitalのプリセット一覧の「Glass DAW」フォルダ）', 6000);
+  if (r.latest) { if (manual && !r.files) toast('最新の状態です', 2500); return; }
   if (r.needZip) { toast('大きめの更新があります。今回だけZIPをダウンロードして入れ直してください。' + (r.note ? '（' + r.note + '）' : ''), 9000); return; }
   if (r.updated) {
     const msg = '新しいバージョンを入れました。' + (r.note ? '\n\n' + r.note : '') + '\n\n今すぐ切り替えますか？（あとでアプリを開き直しても切り替わります）';

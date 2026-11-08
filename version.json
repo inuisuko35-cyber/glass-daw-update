@@ -1,6 +1,52 @@
 {
- "build": 202611081149,
- "sha256": "7322bbdee03fff57a55fca608c159d4b2db4d743ab6e4f8ac2052a33d5bc0cc9",
- "shell": 1,
- "note": "アプリ内アップデートに対応"
+ "build": 202611081223,
+ "sha256": "446b940c33a28b9382907624c699347501b21b5b7d1a4b1e9c5bee7ab271d657",
+ "shell": 2,
+ "note": "サインオブリガートとソウベースのVitalプリセットを追加。アップデートでVitalのプリセットも届くように",
+ "files": [
+  {
+   "p": "vital-presets/GD FB Pluck Chords.vital",
+   "sha256": "bc5b66f7a3b1a4584fc86a5fd4ff3cb8cf745504d27a69bfbc05542df8d44867"
+  },
+  {
+   "p": "vital-presets/GD FB Supersaw Chords.vital",
+   "sha256": "089d14e8c633d4f3b7302ec5f4d44e139f2b27a268f9b9043a1709aa43ea8314"
+  },
+  {
+   "p": "vital-presets/GD FB Wub Chords.vital",
+   "sha256": "5457e8f5b62dac506c470686b0f186787cf3967e60421aa72979c2818682b377"
+  },
+  {
+   "p": "vital-presets/GD Hardcore Supersaw.vital",
+   "sha256": "38f32794cc426be11f251049d2b9fecf5ab5f0211d677989a078ba294036c425"
+  },
+  {
+   "p": "vital-presets/GD Mid Saw Bass.vital",
+   "sha256": "6e2c10f90a5670cf4b174444b6f8851f446c17a1aea3ae9d4d66d08387af398a"
+  },
+  {
+   "p": "vital-presets/GD Saw Lead.vital",
+   "sha256": "309fabb49a6537e4a539dda14087fa79031611f3633f2f6aeb70e57468d82b51"
+  },
+  {
+   "p": "vital-presets/GD Sine Obbligato.vital",
+   "sha256": "6fae22d943cc5930dde3a1e635982d65165b6de7b5af564b59b31b80dc12c013"
+  },
+  {
+   "p": "vital-presets/GD Sub Bass.vital",
+   "sha256": "29c221f41f38c5c83efe5a403d9eed5f4bc08f76ec313d20716444a16ea907fb"
+  },
+  {
+   "p": "vital-presets/GD Supersaw Clean.vital",
+   "sha256": "dc1447b06608ccf19d2a7e9d66a5602b4a97496f00235b4bfebebadfa37dfb02"
+  },
+  {
+   "p": "vital-presets/GD Supersaw Sequence.vital",
+   "sha256": "7f1e00aa78643d56b9c3351347b5d00c8c27a38c7bfe10b614c0dd921eefbe98"
+  },
+  {
+   "p": "vital-presets/GD Wobble Bass.vital",
+   "sha256": "aa1646f359dad70c9b2b201ee08aeaff166ad4292d478228335652d039b0980c"
+  }
+ ]
 }
