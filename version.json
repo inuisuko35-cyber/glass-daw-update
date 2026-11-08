@@ -1,8 +1,8 @@
 {
- "build": 202611081311,
- "sha256": "9e2b52e8b1fc7d5ac3d9d6fc81530710996b840724fe4c74f6f3d4ede8c36712",
+ "build": 202611081543,
+ "sha256": "949cb3c00d68fa7d40e6a3d1b1c00583ff78bf7089fcfd716ea2b89c2938f78e",
  "shell": 2,
- "note": "水辺ドラム（締まったキック＋クラップ＋軽いパーカッションのキットとビート）を追加",
+ "note": "ベロシティの値を表示・サンプルパック4つ（音はZIP版）",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
