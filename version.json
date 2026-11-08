@@ -1,9 +1,17 @@
 {
- "build": 202611081223,
- "sha256": "446b940c33a28b9382907624c699347501b21b5b7d1a4b1e9c5bee7ab271d657",
+ "build": 202611081247,
+ "sha256": "7dbfbcb43a6504f766c354752cb0cfb5e73c6e146b541158b8a2e296486823b1",
  "shell": 2,
- "note": "サインオブリガートとソウベースのVitalプリセットを追加。アップデートでVitalのプリセットも届くように",
+ "note": "水辺のFuture Bass用の音を追加（水音・森の音ループ、しずく系の音色、Vitalプリセット2つ）",
  "files": [
+  {
+   "p": "vital-presets/GD Aqua Wub Chords.vital",
+   "sha256": "ebb0fcf7b958937e45f2162b88f2b577943bdffbadfe1ee1ea67773fbe4c9dc6"
+  },
+  {
+   "p": "vital-presets/GD Droplet Pluck.vital",
+   "sha256": "1c91e392b5f106371f124e19aa525ba62aecf6f0741a4655cb7984cfb6a94c43"
+  },
   {
    "p": "vital-presets/GD FB Pluck Chords.vital",
    "sha256": "bc5b66f7a3b1a4584fc86a5fd4ff3cb8cf745504d27a69bfbc05542df8d44867"

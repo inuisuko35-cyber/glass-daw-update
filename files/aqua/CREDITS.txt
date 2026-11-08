@@ -1,0 +1,8 @@
+水辺のFuture Bass用の環境音ループ（すべてCC0 / パブリックドメイン相当）
+150BPMで16小節（windは8小節）になるように切り出し、つなぎ目をクロスフェードしてループにしています。
+
+stream.ogg  — "stream2.wav" by gluckose  https://freesound.org/s/333987/  CC0
+birds.ogg   — "WoodThrushinMorningShawneeForestMay272012.wav" by kvgarlic  https://freesound.org/s/156826/  CC0
+forest.ogg  — "Wind_pine.wav" by sinewave1kHz  https://freesound.org/s/202989/  CC0
+wind.ogg    — "Wind blowing in a field in Texas, USA" by felix.blume  https://freesound.org/s/217506/  CC0
+（入手元: Blanket https://github.com/rafaelmardojai/blanket / Blankie https://github.com/codybrom/Blankie のクレジット表記）

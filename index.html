@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611081223">
+<meta name="gd-build" content="202611081247">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -5911,6 +5911,7 @@ function showAddTrack() {
     <nav class="atnav"></nav>
     <section data-k="inst" data-n="楽器"><h3>楽器</h3><div class="tiles"></div>
     <div class="row2"><button class="pri all">すべての楽器から選ぶ…（150種類以上・試聴できます）</button></div></section>
+    <section data-k="aqua" data-n="水辺"><h3>水辺のFuture Bass <small>水音・しずく・水の楽器</small></h3><div class="tiles sm aquat"></div></section>
     <section data-k="fb" data-n="Future Bass"><h3>Future Bass・PSYQUI風の近道</h3><div class="tiles fbt"></div></section>
     <section data-k="cc0" data-n="追加音源"><h3>追加音源 <small>実際に録音した音・CC0</small></h3><div class="tiles sm cc0"></div></section>
     <section data-k="kit" data-n="ドラム・サンプル"><h3>ドラムキット・サンプル</h3><div class="tiles kitt"></div></section>
@@ -5934,6 +5935,8 @@ function showAddTrack() {
   const S = addShortcutTiles(card);
   for (const [n, sub, col, fn] of S.fb) tile(m.querySelector('.fbt'), n, sub, col, fn);
   for (const [n, sub, col, fn] of S.cc0) tile(m.querySelector('.cc0'), n, sub, col, fn);
+  for (const [n, sub, col, fn] of (S.aqua || [])) tile(m.querySelector('.aquat'), n, sub, col, fn);
+  if (!(S.aqua || []).length) m.querySelector('[data-k="aqua"]').hidden = true;
   if (!S.cc0.length) m.querySelector('[data-k="cc0"]').hidden = true;
   for (const [n, sub, col, fn] of S.kit) tile(m.querySelector('.kitt'), n, sub, col, fn);
   const ct = m.querySelector('.tiles.chill');
@@ -8428,6 +8431,61 @@ function applyTable(tr, t) {
   toast('「' + t.n + '」をウェーブテーブルにしました。「テーブルの位置」で音色が変わります', 5000);
   previewNote(tr, 60, 0.8, 0.6);
 }
+
+/* ============ 水辺のFuture Bass: water / plant sounds ============
+   Synth presets (no files) + CC0 ambience loops (16 bars at 150 BPM). The loops live in the update repository
+   (files/aqua/*.ogg, CC0, from Blanket / Blankie's credits) and are cached in the browser after the first use. */
+Object.assign(SYN_PRESETS, {
+  aquadrop: ['しずく（水滴の「ポチャ」）', { w1: 'sine', w2: 'sine', mix: 0, uni: 1, cut: 12000, res: 0.7, fenv: 0, penv: -12, pdec: 0.025,
+    att: 0.001, dec: 0.18, sus: 0, rel: 0.12, vs: 0.6, room: 0.3, ana: 0.1 }],
+  aquapluck: ['水面プラック（透明なベル）', { w1: 'sine', w2: 'sine', semi: 12, mix: 0.18, uni: 1, ratio: 3.5, idx: 2.2, idec: 0.18, penv: -3, pdec: 0.03,
+    cut: 9000, res: 0.7, fenv: 0, att: 0.002, dec: 0.9, sus: 0, rel: 0.5, vs: 0.6, room: 0.35, ana: 0.15 }],
+  aquapad: ['水面パッド（すきとおる）', { w1: 'triangle', w2: 'sine', semi: 12, mix: 0.35, uni: 3, spread: 16, cut: 3200, res: 0.8, fenv: 0.6, fdec: 1.5,
+    att: 0.9, dec: 2, sus: 0.85, rel: 2, vs: 0.4, room: 0.45, ana: 0.3, lfoT: 'cut', lfoR: '4', lfoS: 'sine', lfoD: 0.15 }],
+  aqualead: ['やわらかサインリード（水辺）', { w1: 'sine', w2: 'triangle', semi: 12, mix: 0.08, uni: 1, cut: 9000, res: 0.7, fenv: 0,
+    att: 0.008, dec: 0.5, sus: 0.7, rel: 0.3, glide: 0.05, vs: 0.5, room: 0.25, ana: 0.2, lfoT: 'pitch', lfoR: '0.5', lfoS: 'sine', lfoD: 0.06 }],
+});
+const AQUA_AMB = [
+  ['stream', 'せせらぎ', '小川の水音（16小節ループ）', '#5fd0e8', 'Stream — gluckose (freesound 333987), CC0'],
+  ['birds', '小鳥の森', '朝の森と鳥の声（16小節ループ）', '#8fdc8a', 'Birds — kvgarlic (freesound 156826), CC0'],
+  ['forest', '松林の風', '木々を抜ける風（16小節ループ）', '#6fc7a0', 'Forest — sinewave1kHz (freesound 202989), CC0'],
+  ['wind', 'そよ風', '草原の風（8小節ループ）', '#b6e3f0', 'Wind — felix.blume (freesound 217506), CC0'],
+];
+const AQUA_URLS = f => [
+  'https://cdn.jsdelivr.net/gh/inuisuko35-cyber/glass-daw-update@main/files/aqua/' + f + '.ogg',
+  'https://raw.githubusercontent.com/inuisuko35-cyber/glass-daw-update/main/files/aqua/' + f + '.ogg'];
+async function aquaBytes(f) {
+  if (window.desktop && window.desktop.readLib) { try { const b = await window.desktop.readLib('glassdaw/aqua/' + f + '.ogg'); if (b) return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); } catch (e) { } }
+  try { const hit = await idbGet('lib:aqua:' + f); if (hit) return hit; } catch (e) { }
+  let err;
+  for (const u of AQUA_URLS(f)) {
+    try { const r = await fetch(u); if (!r.ok) throw new Error(r.status); const ab = await r.arrayBuffer(); try { await idbPut('lib:aqua:' + f, ab); } catch (e) { } return ab; } catch (e) { err = e; }
+  }
+  throw err;
+}
+async function addAquaAmbience(k) {
+  const it = AQUA_AMB.find(x => x[0] === k); if (!it) return;
+  ensureAC(); toast('「' + it[1] + '」を読み込み中…', 2000);
+  let s; try { s = await addSource(it[1], await aquaBytes(k)); } catch (e) { toast('読み込めませんでした（インターネットにつながっているか確認してね）', 5000); return; }
+  const at = UI.insertAt != null ? UI.insertAt : 0;
+  act(() => {
+    const tr = newTrack(it[1], 'audio'); tr.vol = -9;
+    tr.clips.push({ id: uid(), src: s.id, name: it[1], start: Math.max(0, at), offset: 0, len: s.buf.duration, gain: 0, fi: 0.5, fo: 0.5, rev: false });
+    UI.selTrack = tr.id;
+  });
+  ensureDerivedAll();
+  toast('「' + it[1] + '」を置きました。Ctrl+Dで複製すると長くできます（音量は−9dBにしてあります）', 5000);
+}
+{ const _ast = addShortcutTiles; addShortcutTiles = function (m) {
+  const r = _ast(m), tr = fn => () => { fn(); };
+  const gx = n => { const g = (typeof GX_LIST !== 'undefined' ? GX_LIST : []).find(x => x[0] === n); return g ? [g[1].replace(/（.*/, ''), '水の楽器・CC0', '#7fd6ff', () => makeInstTrack(g[1].replace(/（.*/, ''), newInst('rec', 'gx:' + n))] : null; };
+  r.aqua = [
+    ...AQUA_AMB.map(([k, n, sub, col]) => [n, sub, col, tr(() => addAquaAmbience(k))]),
+    ...['aquadrop', 'aquapluck', 'aquapad', 'aqualead'].map((k, i) => [SYN_PRESETS[k][0].replace(/（.*/, ''), SYN_PRESETS[k][0].match(/（(.*)）/)[1], ['#9fe0ff', '#c3b6ff', '#7fe0c8', '#ffd0e8'][i], () => makeInstTrack(SYN_PRESETS[k][0].replace(/（.*/, ''), newInst('synth', k))]),
+    ...[5, 3, 11, 9].map(gx).filter(Boolean),
+  ];
+  return r;
+}; }
 
 /* ============ top bar wiring ============ */
 $('#play').onclick = togglePlay;
