@@ -1,8 +1,8 @@
 {
- "build": 202611081545,
- "sha256": "d2c4211386c9ac5a1b5e7761400a338a9d5f287647b85c903f954a478b4e8561",
+ "build": 202611081547,
+ "sha256": "c9c63d83d795a97f124314051582475bf56369c784eb73e4847fce01ca5fe1f0",
  "shell": 2,
- "note": "ピアノ・楽器の打鍵音（コツン）をオンオフ",
+ "note": "選んだ音の強さをまとめて変える",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",

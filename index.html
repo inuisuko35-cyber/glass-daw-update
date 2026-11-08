@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611081545">
+<meta name="gd-build" content="202611081547">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -4844,8 +4844,8 @@ function drawRoll() {
   x.fillStyle = '#141417'; x.fillRect(R.keyW, vt, RW, R.velH); x.fillStyle = 'rgba(255,255,255,.1)'; x.fillRect(R.keyW, vt, RW, 1);
   c.notes.forEach((n, i) => { const nx = rX(n.t); if (nx < R.keyW - 2 || nx > RW) return; const h = (R.velH - 10) * n.v; x.fillStyle = R.sel.has(i) ? '#fff' : hexA(col, .9); x.fillRect(nx, vt + R.velH - 4 - h, 3, h); x.beginPath(); x.arc(nx + 1.5, vt + R.velH - 4 - h, 3, 0, 7); x.fill(); });
   x.fillStyle = 'rgba(243,246,255,.6)'; x.font = '600 11px ' + FONT; x.textBaseline = 'alphabetic'; x.fillText('強さ', 10, vt + 18);
-  if (R.drag && R.drag.kind === 'vel' && R.lastVel) { x.fillStyle = '#fff'; x.font = '600 12px ' + FONT; x.fillText('強さ ' + Math.round(R.lastVel * 127) + ' / 127', R.keyW + 8, vt + 16); }
-  if (!c.notes.length) { x.fillStyle = 'rgba(243,246,255,.32)'; x.font = '12px ' + FONT; x.fillText('音の強さ（ベロシティ）の欄です。音を置くとここに棒が出て、上下にドラッグで強さを変えられます。V キーで隠せます', R.keyW + 14, vt + R.velH / 2 + 4); }
+  if (R.drag && R.drag.kind === 'vel' && (R.drag.label || R.lastVel)) { x.fillStyle = '#fff'; x.font = '600 12px ' + FONT; x.fillText(R.drag.label || ('強さ ' + Math.round(R.lastVel * 127) + ' / 127'), R.keyW + 8, vt + 16); }
+  if (!c.notes.length) { x.fillStyle = 'rgba(243,246,255,.32)'; x.font = '12px ' + FONT; x.fillText('音の強さ（ベロシティ）の欄です。音を置くとここに棒が出て、上下にドラッグで強さを変えられます。音を複数選んでドラッグするとまとめて変わります（Alt+↑↓でも）。V キーで隠せます', R.keyW + 14, vt + R.velH / 2 + 4); }
   }
   // keyboard (scale only: one bar per note of the key, every one named)
   if (fold) for (const p of R.rows) {
@@ -4936,7 +4936,11 @@ rsc.addEventListener('pointerdown', e => {
   rsc.setPointerCapture(e.pointerId); ensureAC();
   const { tr, c } = f;
   if (x < R.keyW && y > R.rulerH && y < velTop()) { const p = rP(y); R.hoverKey = p; previewNote(tr, p); R.drag = { kind: 'key' }; R.dirty = true; return; }
-  if (y >= velTop()) { begin(); R.drag = { kind: 'vel' }; velAt(x, y); return; }
+  if (y >= velTop()) {
+    begin(); const gs = [...R.sel].filter(i => c.notes[i]);
+    // several notes selected: they move together (keep their differences), Shift+drag sets them all to one value
+    if (gs.length > 1) { R.drag = { kind: 'vel', group: true, y0: y, abs: e.shiftKey, orig: new Map(gs.map(i => [i, c.notes[i].v])) }; velGroup(y); return; }
+    R.drag = { kind: 'vel' }; velAt(x, y); return; }
   if (y < R.rulerH) { if (x > R.keyW) { const seek = px => setPos(Math.max(0, c.start + (rB(px) - c.offset / cbs(c)) * cbs(c))); seek(x); R.drag = { kind: 'seek', seek }; } return; }
   const h = rollHit(x, y);
   const pen = R.pen && !(e.ctrlKey || e.metaKey);
@@ -4961,6 +4965,13 @@ rsc.addEventListener('pointerdown', e => {
   }
   R.dirty = true;
 });
+const velOfY = y => clamp((velTop() + R.velH - 4 - y) / (R.velH - 10), 0.02, 1);
+function velGroup(y) {
+  const f = rollClip(), D = R.drag; if (!f || !D) return;
+  if (D.abs) { const v = velOfY(y); for (const i of D.orig.keys()) f.c.notes[i].v = v; R.lastVel = v; D.label = '選んだ' + D.orig.size + '個 → 強さ ' + Math.round(v * 127); }
+  else { const dv = (D.y0 - y) / (R.velH - 10); for (const [i, o] of D.orig) f.c.notes[i].v = clamp(o + dv, 0.02, 1); D.label = '選んだ' + D.orig.size + '個 ' + (dv >= 0 ? '+' : '−') + Math.abs(Math.round(dv * 127)) + '（Shiftで全部同じ強さ）'; }
+  R.dirty = true;
+}
 function velAt(x, y) {
   const f = rollClip(); if (!f) return; const v = clamp((velTop() + R.velH - 4 - y) / (R.velH - 10), 0.02, 1);
   f.c.notes.forEach((n, i) => { const nx = rX(n.t); if (Math.abs(nx - x) < 5 && (!R.sel.size || R.sel.has(i))) n.v = v; });
@@ -4974,7 +4985,7 @@ rsc.addEventListener('pointermove', e => {
     if (y < R.rulerH && x > R.keyW) { rsc.style.cursor = 'text'; return; } rsc.style.cursor = h.i != null ? (h.edge ? 'ew-resize' : 'grab') : x < R.keyW ? 'pointer' : y >= velTop() ? 'ns-resize' : R.pen && !(e.ctrlKey || e.metaKey) ? 'crosshair' : 'default'; return; }
   const D = R.drag;
   if (D.kind === 'key') { const p = rP(y); if (p !== R.hoverKey && y > R.rulerH && y < velTop()) { R.hoverKey = p; previewNote(tr, p); R.dirty = true; } return; }
-  if (D.kind === 'vel') { velAt(x, y); return; }
+  if (D.kind === 'vel') { if (D.group) velGroup(y); else velAt(x, y); return; }
   if (D.kind === 'seek') { if (x > R.keyW) D.seek(x); return; }
   if (D.kind === 'band') { R.band = { x0: Math.min(D.x0, x), y0: Math.min(D.y0, y), x1: Math.max(D.x0, x), y1: Math.max(D.y0, y) }; R.dirty = true; return; }
   const free = e.shiftKey || e.ctrlKey || e.metaKey, snap = v => free ? v : rsnap(v);
@@ -5053,6 +5064,7 @@ function rollKey(e) {
   }
   if (!mod && !e.altKey && k === 'v') { setVel(!R.velOn); return true; }
   if (e.altKey && (e.key === '+' || e.key === '=' || e.key === '-' || e.code === 'Equal' || e.code === 'Minus')) { const c0 = rsc.scrollTop / R.rowH; R.rowH = clamp(R.rowH + (e.key === '-' || e.code === 'Minus' ? -2 : 2), 6, 26); rollLayout(); rsc.scrollTop = c0 * R.rowH; return true; }
+  if (!mod && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { if (!sel.length) return true; const d = (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 16 : 4) / 127; act(() => sel.forEach(i => c.notes[i].v = clamp(c.notes[i].v + d, 0.02, 1)), { live: true }); toast('強さ ' + sel.map(i => Math.round(c.notes[i].v * 127)).join('・').slice(0, 40), 1200); R.dirty = true; return true; }
   if (!mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { if (!sel.length) return true; const d = e.key === 'ArrowUp' ? 1 : -1; act(() => sel.forEach(i => c.notes[i].p = e.shiftKey ? clamp(c.notes[i].p + 12 * d, 0, 127) : snapScale(c.notes[i].p, d)), { live: true }); R.dirty = true; return true; }
   if (!mod && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { if (!sel.length) return false; const d = (e.key === 'ArrowRight' ? 1 : -1) * R.grid; act(() => { sel.forEach(i => c.notes[i].d = Math.max(R.grid / 2, c.notes[i].d + d)); fitClip(c); }, { live: true }); R.len = c.notes[sel[0]].d; R.dirty = true; return true; }
   if (!mod && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { if (!sel.length) return false; const d = (e.key === 'ArrowRight' ? 1 : -1) * R.grid; act(() => sel.forEach(i => c.notes[i].t = Math.max(c.offset / cbs(c), c.notes[i].t + d)), { live: true }); R.dirty = true; return true; }
