@@ -1,8 +1,8 @@
 {
- "build": 202611090225,
- "sha256": "cd3a9a456d49458979c92b50e4ecce7e6e3de9ab79e0cf538af6c25c3facf45a",
+ "build": 202611090301,
+ "sha256": "23ec4ba384306251177a32c5c53f3de21f0851044396494b3a576b455d54b358",
  "shell": 2,
- "note": "軽量化：フリーズ、Rust版OTT・レゾネーター、待機中の画面更新を削減",
+ "note": "軽量化2：リバーブ共有、Rust版スーパーソー、サンプルレート合わせ、再生中の編集で止まらない",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
