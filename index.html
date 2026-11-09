@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611090403">
+<meta name="gd-build" content="202611090407">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -9547,6 +9547,41 @@ function stWorker() {
     for (const ext of ['.ogg', '.flac']) { try { const b = await window.desktop.readLib(path.replace(/\.wav$/i, ext)); if (b) return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); } catch (e) {} }
   }
   return _fl(path, onProgress);
+}; }
+
+/* ============ kits not next to this app (an older Glass DAW was started): read them from a folder the user picks ============ */
+const KIT_ROOT_KEY = 'gdaw:kitroot';
+let kitAsk = null;
+async function kitFromRoot(path) {
+  let root = null; try { root = localStorage.getItem(KIT_ROOT_KEY); } catch (e) {}
+  if (!root || !window.desktop || !window.desktop.readFile) return null;
+  const rel = decodeURIComponent(path), r0 = root.replace(/[\\/]+$/, ''), up = r0.replace(/[\\/]kits$/i, '');
+  const bases = [...new Set([r0 + '/resources/sounds/', r0 + '/sounds/', up + '/', r0 + '/GlassDAW/resources/sounds/'])];
+  const names = [rel.replace(/\.wav$/i, '.ogg'), rel.replace(/\.wav$/i, '.flac'), rel];
+  for (const b of bases) for (const n of names) {
+    try { const r = await window.desktop.readFile(b + n); if (r && r.bytes) { const u = r.bytes; return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength); } } catch (e) {}
+  }
+  return null;
+}
+async function askKitRoot() {
+  if (kitAsk) return kitAsk;
+  kitAsk = (async () => {
+    if (!window.desktop || !window.desktop.pickDir) return false;
+    toast('音のファイルが見つかりません。新しいzipを展開してできた「GlassDAW」フォルダを選んでください', 10000);
+    const d = await window.desktop.pickDir({ title: '新しいzipを展開した「GlassDAW」フォルダを選んでください' });
+    if (!d) return false;
+    try { localStorage.setItem(KIT_ROOT_KEY, d); } catch (e) {}
+    return true;
+  })();
+  try { return await kitAsk; } finally { setTimeout(() => { kitAsk = null; }, 3000); }
+}
+{ const _fl2 = fetchLib; fetchLib = async function (path, onProgress) {
+  if (!/^kits\//.test(path)) return _fl2(path, onProgress);
+  try { return await _fl2(path, onProgress); } catch (e) {
+    let b = await kitFromRoot(path); if (b) return b;
+    if (await askKitRoot()) { b = await kitFromRoot(path); if (b) { toast('音を読み込めました。次からはこのフォルダから自動で読みます', 4000); return b; } toast('そのフォルダには音が見つかりませんでした。展開してできた「GlassDAW」フォルダ（GlassDAW.exe があるところ）を選んでください', 8000); }
+    throw e;
+  }
 }; }
 
 /* ============ top bar wiring ============ */
