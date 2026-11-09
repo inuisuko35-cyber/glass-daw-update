@@ -1,8 +1,8 @@
 {
- "build": 202611090138,
- "sha256": "d4c97e1d6794599f6c7bc8e1f813611a4559bfdadadfcc27d2f3baaaf3de385e",
+ "build": 202611090201,
+ "sha256": "058c79a8d6984267e64386fe21db3ce28bdb8ba3bc4293fdb790a4b3e2c2c677",
  "shell": 2,
- "note": "水辺の機能11個：OTT・レゾネーター・エアー・ダブラー・歌声合成書き出し・ドラムの型・しずく・リファレンス・重さメーター・ボイシング",
+ "note": "ALL IN RHYX 専用の枠（キー・テンポ自動合わせ）",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
