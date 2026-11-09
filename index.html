@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611090301">
+<meta name="gd-build" content="202611090346">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -9538,7 +9538,7 @@ function stWorker() {
 /* ============ kits packed as FLAC in the Windows zip: ask for the .flac first, the .wav if it isn't there ============ */
 { const _fl = fetchLib; fetchLib = async function (path, onProgress) {
   if (window.desktop && window.desktop.readLib && /^kits\/.+\.wav$/i.test(path)) {
-    try { const b = await window.desktop.readLib(path.replace(/\.wav$/i, '.flac')); if (b) return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); } catch (e) {}
+    for (const ext of ['.ogg', '.flac']) { try { const b = await window.desktop.readLib(path.replace(/\.wav$/i, ext)); if (b) return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); } catch (e) {} }
   }
   return _fl(path, onProgress);
 }; }
