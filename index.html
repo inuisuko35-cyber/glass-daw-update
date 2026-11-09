@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611081547">
+<meta name="gd-build" content="202611090138">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -774,6 +774,20 @@ body:has(.modal:not([hidden])) #toast{top:auto;bottom:28px}
 .vstm .vit.on { outline: 2px solid var(--accent, #7aa2ff); }
 .vstm .tsth { margin: 12px 0 2px; font-size: 13px; opacity: .8; }
 .vstm .vit { height: auto; min-height: 40px; }
+/* 水辺: load meter, reference A/B, vocal export */
+.loadm .card{width:min(560px,94vw)}
+.loadm .ldl{display:flex;flex-direction:column;gap:6px;margin:8px 0;max-height:50vh;overflow:auto}
+.loadm .ldr{display:grid;grid-template-columns:minmax(90px,170px) 1fr 46px;align-items:center;gap:10px;font-size:13px}
+.loadm .ldn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.loadm .ldb{height:10px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden}
+.loadm .ldb i{display:block;height:100%;border-radius:5px}
+.loadm .ldr b{text-align:right;font-variant-numeric:tabular-nums}
+.mcard .refc .refab,.mcard .ldc{flex-wrap:wrap;margin-top:8px}
+.mcard .refc .refm{display:flex;align-items:center;gap:6px;font-size:12px;margin:6px 0 0;opacity:.85}
+.mcard .refc .refg{font-size:11px;margin-top:4px}
+.vexm .card{width:min(560px,94vw)}
+.vexm .sels{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.vexm .vprev{font-size:12px;word-break:break-all}
 </style>
 </head>
 <body>
@@ -4588,7 +4602,10 @@ function arpeggiate(notes, A) {
     else if (A.mode === 'updown') { const per = Math.max(1, 2 * N - 2), j = k % per; i = j < N ? j : per - j; }
     else if (A.mode === 'random') i = Math.floor(rnd() * N);
     else i = k % N;
-    out.push({ p: pool[i].p, t, d: rate * A.gate, v: pool[i].v });
+    // しずく: each step plays only with some probability and a little loudness spread (stable from play to play)
+    const pr = A.prob ?? 1, vr = A.vr || 0, sr = mulberry32(9001 + k);
+    if (pr < 1 && sr() > pr) continue;
+    out.push({ p: pool[i].p, t, d: rate * A.gate, v: vr ? clamp(pool[i].v * (1 - vr * sr()), 0.05, 1) : pool[i].v });
   }
   return out;
 }
@@ -4708,6 +4725,11 @@ function arpCard(tr) {
   sels.appendChild(selectCtl('オクターブ', [['1', '1'], ['2', '2'], ['3', '3']], String(A.oct), v => act(() => { A.oct = Number(v); })));
   const body = el('div', 'knobs'); c.appendChild(body);
   body.appendChild(knob({ k: 'gate', l: '音の長さ', min: 0.1, max: 1, def: 0.8, u: '%' }, A.gate, v => { begin(); A.gate = v; }, () => end()));
+  body.appendChild(knob({ k: 'prob', l: '鳴る確率', min: 0.05, max: 1, def: 1, u: '%' }, A.prob ?? 1, v => { begin(); A.prob = v; }, () => end()));
+  body.appendChild(knob({ k: 'vr', l: '強さのばらつき', min: 0, max: 1, def: 0, u: '%' }, A.vr || 0, v => { begin(); A.vr = v; }, () => end()));
+  const dz = el('button', 'wide', 'しずくモード（ランダムにポツポツ）'); dz.title = '順番ランダム・1/16・2オクターブ・鳴る確率45%・短め・強さばらばら';
+  dz.onclick = () => act(() => Object.assign(A, { on: true, mode: 'random', rate: 0.25, oct: 2, gate: 0.35, prob: 0.45, vr: 0.55 }));
+  c.appendChild(dz);
   return c;
 }
 
@@ -8612,6 +8634,454 @@ KIT_PADS.maqrozy = { name: 'Maqrozy UKHC', color: '#ff7ab0', bpm: 175, map: {
   return r;
 }; }
 
+/* ============ 水辺のFuture Bass: the effects the song needs ============
+   OTT (upward + downward, 3 bands), a resonator that rings the song's chords, air (a soft high-end exciter),
+   a vocal doubler and a "watery vocal" chain. OTT and the resonator run in their own small AudioWorklet. */
+const AQ_WORKLET_SRC = `
+function bqC(type,f,q,sr){const w=2*Math.PI*f/sr,c=Math.cos(w),s=Math.sin(w),a=s/(2*q),a0=1+a;
+  if(type==='lp')return[(1-c)/2/a0,(1-c)/a0,(1-c)/2/a0,-2*c/a0,(1-a)/a0];
+  return[(1+c)/2/a0,-(1+c)/a0,(1+c)/2/a0,-2*c/a0,(1-a)/a0]}
+function bqS(){return{z1:0,z2:0}}
+function bqR(k,s,x){const y=k[0]*x+s.z1;s.z1=k[1]*x-k[3]*y+s.z2;s.z2=k[2]*x-k[4]*y;return y}
+class Ott extends AudioWorkletProcessor{
+  static get parameterDescriptors(){return[{name:'dep',defaultValue:1},{name:'time',defaultValue:1},{name:'up',defaultValue:1},{name:'down',defaultValue:1},
+    {name:'ing',defaultValue:0},{name:'out',defaultValue:0},{name:'hg',defaultValue:0},{name:'mg',defaultValue:0},{name:'lg',defaultValue:0}]}
+  constructor(){super();const sr=sampleRate,Q=Math.SQRT1_2;
+    this.k={l1:bqC('lp',88.3,Q,sr),h1:bqC('hp',88.3,Q,sr),l2:bqC('lp',2500,Q,sr),h2:bqC('hp',2500,Q,sr)};
+    // per channel: LR4 = two Butterworth stages; the low band also passes an LR4 all-pass at 2.5 kHz so the bands sum flat
+    this.s=[0,1].map(()=>({a:[bqS(),bqS()],b:[bqS(),bqS()],c:[bqS(),bqS()],d:[bqS(),bqS()],e:[bqS(),bqS()],f:[bqS(),bqS()]}));
+    // bands: low, mid, high (values of the Ableton "OTT" preset): down threshold, up threshold, output gain, attack ms, release ms
+    this.B=[{td:-33.8,tu:-40.8,mk:10.3,at:47.8,re:282},{td:-30.2,tu:-41.8,mk:5.7,at:22.4,re:282},{td:-35.5,tu:-40.8,mk:10.3,at:13.5,re:132}];
+    this.env=[0,0,0];this.cnt=0;this.gr=[0,0,0]}
+  process(ins,outs,P){const i=ins[0],o=outs[0];if(!i||!i.length)return true;
+    const n=o[0].length,sr=sampleRate,k=this.k,B=this.B,tm=Math.max(0.05,P.time[0]),dep=P.dep[0],up=P.up[0],dn=P.down[0],
+      ing=Math.pow(10,P.ing[0]/20),og=Math.pow(10,P.out[0]/20),ug=[P.lg[0],P.mg[0],P.hg[0]].map(v=>Math.pow(10,v/20)),
+      RD=1-1/66.7,RU=1-1/4.17,ac=B.map(b=>1-Math.exp(-1/(sr*b.at*tm/1000))),rc=B.map(b=>1-Math.exp(-1/(sr*b.re*tm/1000)));
+    const iL=i[0],iR=i[1]||i[0],oL=o[0],oR=o[1]||o[0],xs=[0,0],bands=[[0,0],[0,0],[0,0]];
+    for(let t=0;t<n;t++){xs[0]=iL[t]*ing;xs[1]=iR[t]*ing;
+      for(let ch=0;ch<2;ch++){const S=this.s[ch],x=xs[ch];
+        let lo=bqR(k.l1,S.a[1],bqR(k.l1,S.a[0],x)),rest=bqR(k.h1,S.b[1],bqR(k.h1,S.b[0],x));
+        lo=bqR(k.l2,S.e[1],bqR(k.l2,S.e[0],lo))+bqR(k.h2,S.f[1],bqR(k.h2,S.f[0],lo));
+        bands[0][ch]=lo;bands[1][ch]=bqR(k.l2,S.c[1],bqR(k.l2,S.c[0],rest));bands[2][ch]=bqR(k.h2,S.d[1],bqR(k.h2,S.d[0],rest))}
+      let l=0,r=0;
+      for(let b=0;b<3;b++){const a=bands[b],pk=Math.max(Math.abs(a[0]),Math.abs(a[1])),e=this.env[b];
+        this.env[b]=e+(pk-e)*(pk>e?ac[b]:rc[b]);
+        const lv=20*Math.log10(Math.max(1e-4,this.env[b])),bb=B[b];let gd=0;
+        if(lv>bb.td)gd=(bb.td-lv)*RD*dn;else if(lv<bb.tu)gd=Math.min(30,(bb.tu-lv)*RU*up);
+        const g=Math.pow(10,(gd+bb.mk)/20),w=(1-dep)+dep*g;if(b===1)this.gr[b]=gd;
+        l+=a[0]*w*ug[b];r+=a[1]*w*ug[b]}
+      oL[t]=l*og;oR[t]=r*og}
+    return true}}
+registerProcessor('gd-ott',Ott);
+class Reso extends AudioWorkletProcessor{
+  static get parameterDescriptors(){return[{name:'dec',defaultValue:2},{name:'bright',defaultValue:5000},{name:'glide',defaultValue:0.05}]}
+  constructor(){super();this.N=8192;this.v=[0,1,2,3].map(()=>({b:new Float32Array(this.N),w:0,d:200,dt:200,lp:0,on:0,ont:0}));
+    this.ev=[];this.st=null;this.fixed=null;this.cur='';
+    this.port.onmessage=e=>{const m=e.data;if(m.t==='sched')this.ev=m.ev;else if(m.t==='start')this.st={when:m.when,pos:m.pos};else if(m.t==='stop')this.st=null;else if(m.t==='fixed')this.fixed=m.ps}}
+  notes(){if(this.fixed)return this.fixed;const ev=this.ev;if(!ev.length)return null;
+    const ts=this.st?this.st.pos+(currentTime-this.st.when):0;let lo=0,hi=ev.length-1,k=-1;
+    while(lo<=hi){const m=(lo+hi)>>1;if(ev[m][0]<=ts){k=m;lo=m+1}else hi=m-1}
+    return ev[Math.max(0,k)][1]}
+  process(ins,outs,P){const i=ins[0],o=outs[0],n=o[0].length,sr=sampleRate,iL=i&&i.length?i[0]:null,iR=i&&i.length?(i[1]||i[0]):null,oL=o[0],oR=o[1]||o[0];
+    const ps=this.notes(),key=ps?ps.join(','):'';
+    if(key!==this.cur){this.cur=key;this.v.forEach((v,j)=>{const p=ps&&ps[j];if(p==null){v.ont=0;return}v.ont=1;v.dt=Math.min(this.N-4,sr/(440*Math.pow(2,(p-69)/12)))})}
+    const dec=Math.max(0.05,P.dec[0]),lpc=1-Math.exp(-2*Math.PI*Math.min(18000,P.bright[0])/sr),gl=1-Math.exp(-1/(sr*Math.max(0.001,P.glide[0]))),fade=1-Math.exp(-1/(sr*0.03));
+    for(let t=0;t<n;t++){const x=iL?(iL[t]+iR[t])*0.5:0;let l=0,r=0;
+      for(let j=0;j<4;j++){const v=this.v[j];v.on+=(v.ont-v.on)*fade;if(v.on<1e-4&&v.ont===0){v.b[v.w]=0;v.w=(v.w+1)%this.N;continue}
+        v.d+=(v.dt-v.d)*gl;const fb=Math.exp(-6.9078*v.d/(sr*dec));
+        let rp=v.w-v.d;if(rp<0)rp+=this.N;const i0=Math.floor(rp),fr=rp-i0,y0=v.b[i0],y1=v.b[(i0+1)%this.N],dl=y0+(y1-y0)*fr;
+        v.lp+=(dl-v.lp)*lpc;const y=x*Math.sqrt(1-fb*fb)+v.lp*fb;v.b[v.w]=y;v.w=(v.w+1)%this.N;
+        const s=y*v.on,pn=j%2?0.75:0.25;l+=s*(1-pn)*2.8;r+=s*pn*2.8}
+      oL[t]=l;oR[t]=r}
+    return true}}
+registerProcessor('gd-reso',Reso);`;
+const AQ_WORKLET_URL = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(AQ_WORKLET_SRC);
+const aqReady = new WeakSet();
+{ const _lw = loadWorklet; loadWorklet = async function (ctx) {
+  await _lw(ctx);
+  if (!aqReady.has(ctx) && ctx.audioWorklet) { try { await ctx.audioWorklet.addModule(AQ_WORKLET_URL); aqReady.add(ctx); } catch (e) { console.warn('aqua worklet unavailable', e); } }
+}; }
+function aqNode(ctx, name) {
+  if (!aqReady.has(ctx)) return null;
+  return new AudioWorkletNode(ctx, name, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' });
+}
+
+/* ---------- OTT ---------- */
+FX.ottx = { n: 'OTT（アップ＋ダウン・3バンド）', cat: 'ダイナミクス', p: [
+  n_('dep', '深さ', 0, 1, 1, '%'), n_('time', '時間', 0.1, 3, 1, '×', true), n_('ing', '入力', -24, 24, 0, 'dB'), n_('out', '出力', -24, 24, 0, 'dB'),
+  n_('up', '上げる（アップ）', 0, 1, 1, '%'), n_('down', '下げる（ダウン）', 0, 1, 1, '%'),
+  n_('hg', '高域', -24, 24, 0, 'dB'), n_('mg', '中域', -24, 24, 0, 'dB'), n_('lg', '低域', -24, 24, 0, 'dB')],
+  make(ctx, E) {
+    const i = st(ctx), w = aqNode(ctx, 'gd-ott');
+    if (!w) return { i, o: i, set() {} };
+    i.connect(w);
+    return { i, o: w, set(k, v) { const pr = w.parameters.get(k); if (pr) E.S(pr, v); } };
+  } };
+
+/* ---------- resonator: rings the chords that are playing in the song (or a chord you pick) ---------- */
+const RESO_TYPES = { maj: [0, 4, 7, 12], min: [0, 3, 7, 12], maj7: [0, 4, 7, 11], min7: [0, 3, 7, 10], sus2: [0, 2, 7, 12], add9: [0, 4, 7, 14], oct: [0, 12, 19, 24] };
+// the song's chords as [seconds, [midi notes]]: every non-drum MIDI note, sounding pitch classes voiced upward from the bass
+function songChordTimeline(oct) {
+  const iv = [];
+  for (const tr of P.tracks) {
+    if (tr.type !== 'midi' || tr.mute || !tr.inst || /^(drums|pads)$/.test(tr.inst.type) || (tr.inst.type === 'rec' && tr.inst.p.lib === 'kit')) continue;
+    for (const c of tr.clips) { if (!c.notes || c.mute) continue; const bs = cbs(c);
+      for (const n of c.notes) { const ts = c.start + n.t * bs - c.offset; if (ts < c.start - 1e-6 || ts >= c.start + c.len) continue; iv.push([ts, Math.min(ts + n.d * bs, c.start + c.len), n.p]); } }
+  }
+  const pts = [...new Set(iv.flatMap(x => [x[0], x[1]]))].sort((a, b) => a - b), ev = [];
+  for (const t of pts) {
+    const on = iv.filter(x => x[0] <= t + 1e-6 && x[1] > t + 1e-6).map(x => x[2]).sort((a, b) => a - b); if (!on.length) continue;
+    const pcs = []; for (const p of on) { const pc = ((p % 12) + 12) % 12; if (!pcs.includes(pc)) pcs.push(pc); }
+    const base = 12 * (oct + 1), ps = []; let last = -1;
+    for (const pc of pcs.slice(0, 4)) { let m = base + pc; while (m <= last) m += 12; ps.push(m); last = m; }
+    const key = ps.join(','); if (!ev.length || ev[ev.length - 1][1].join(',') !== key) ev.push([t, ps]);
+  }
+  return ev;
+}
+FX.reso = { n: 'レゾネーター（コードで鳴らす）', cat: '空間', p: [
+  s_('mode', '鳴らす音', [['song', '曲のコードに合わせる'], ['key', '曲のキーの和音'], ['pick', '自分で選ぶ']], 'song'),
+  s_('root', '根音（自分で選ぶ）', NOTE_NAMES.map((nm, k) => [String(k), nm]), '2'), s_('type', '和音（自分で選ぶ）', [['maj', 'メジャー'], ['min', 'マイナー'], ['maj7', 'メジャー7'], ['min7', 'マイナー7'], ['sus2', 'sus2'], ['add9', 'add9'], ['oct', 'オクターブ＋5度']], 'maj'),
+  s_('oct', '高さ', [['3', '低め（C3〜）'], ['4', 'ふつう（C4〜）'], ['5', '高め（C5〜）']], '4'),
+  n_('dec', '響きの長さ', 0.1, 8, 2, 's', true), n_('bright', '明るさ', 500, 16000, 5000, 'Hz', true), n_('glide', 'コードの移り変わり', 0.001, 0.5, 0.04, 's', true), MIX(0.5)],
+  make(ctx, E, p) {
+    const dw = dryWet(ctx), w = aqNode(ctx, 'gd-reso'), s = { ...p };
+    if (!w) return { i: dw.i, o: dw.o, set(k, v) { if (k === 'mix') dw.mix(E, v); } };
+    const hp = bq(ctx, 'highpass', 90, 0.707); chain(dw.i, hp, w, dw.w);
+    const send = () => {
+      const oct = Number(s.oct || 4);
+      if (s.mode === 'song') { w.port.postMessage({ t: 'fixed', ps: null }); w.port.postMessage({ t: 'sched', ev: songChordTimeline(oct) }); return; }
+      let root = Number(s.root), ty = RESO_TYPES[s.type] || RESO_TYPES.maj;
+      if (s.mode === 'key') { const ki = keyInfo(); root = ki.root; ty = /minor|dorian|phrygian|aeolian/.test(String(ki.mode)) ? RESO_TYPES.min : RESO_TYPES.maj; }
+      w.port.postMessage({ t: 'fixed', ps: ty.map(x => 12 * (oct + 1) + root + x) });
+    };
+    send();
+    return { i: dw.i, o: dw.o,
+      start(when, pos) { if (s.mode === 'song') w.port.postMessage({ t: 'sched', ev: songChordTimeline(Number(s.oct || 4)) }); w.port.postMessage({ t: 'start', when, pos }); },
+      stop() { w.port.postMessage({ t: 'stop' }); },
+      set(k, v) { s[k] = v; if (k === 'mix') return dw.mix(E, v); const pr = w.parameters.get(k); if (pr) return E.S(pr, v); if (!E.init) send(); } };
+  } };
+
+/* ---------- air: a soft exciter on the very top, "sarasara" rather than "kirakira" ---------- */
+FX.air = { n: 'エアー（サラサラの高域）', cat: 'EQ・フィルター', p: [
+  n_('amt', '量', 0, 1, 0.35, '%'), n_('f', 'どこから上', 2500, 14000, 6500, 'Hz', true), n_('drive', '質感', 0, 24, 9, 'dB'), n_('shelf', '空気感（棚）', 0, 9, 2, 'dB')],
+  make(ctx, E) {
+    const i = st(ctx), o = gn(ctx), sh = bq(ctx, 'highshelf', 12000, null, 2), h1 = bq(ctx, 'highpass', 6500, 0.707), h2 = bq(ctx, 'highpass', 6500, 0.707), ws = ctx.createWaveShaper(), h3 = bq(ctx, 'highpass', 6500, 0.707), amt = gn(ctx, 0.35);
+    ws.oversample = '2x'; chain(i, sh, o); chain(i, h1, h2, ws, h3, amt, o);
+    return { i, o, set(k, v) {
+      if (k === 'amt') E.S(amt.gain, v * 0.5); else if (k === 'f') [h1, h2, h3].forEach(f => E.S(f.frequency, Math.min(v, ctx.sampleRate / 2 - 500)));
+      else if (k === 'drive') ws.curve = shaperCurve('tube', v); else if (k === 'shelf') E.S(sh.gain, v);
+    } };
+  } };
+
+/* ---------- doubler: two slightly late, slightly wobbling copies, one each side ---------- */
+FX.doubler = { n: 'ダブラー（ボーカルを左右に広げる）', cat: '空間', p: [
+  n_('time', 'ずれ', 5, 40, 16, 'ms'), n_('wob', '揺れ', 0, 1, 0.5, '%'), n_('width', '広がり', 0, 1, 0.9, '%'), n_('lc', '低音カット', 20, 600, 160, 'Hz', true), MIX(0.45)],
+  make(ctx, E) {
+    const dw = dryWet(ctx), m = mono(ctx), hp = bq(ctx, 'highpass', 160, 0.707), dl = ctx.createDelay(0.1), dr = ctx.createDelay(0.1), mg = ctx.createChannelMerger(2);
+    const lL = gn(ctx, 1), lR = gn(ctx, 0), rR = gn(ctx, 1), rL = gn(ctx, 0);
+    chain(dw.i, m, hp); hp.connect(dl); hp.connect(dr);
+    dl.connect(lL); dl.connect(lR); dr.connect(rR); dr.connect(rL);
+    lL.connect(mg, 0, 0); rL.connect(mg, 0, 0); rR.connect(mg, 0, 1); lR.connect(mg, 0, 1); mg.connect(dw.w);
+    const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g1 = gn(ctx, 0), g2 = gn(ctx, 0); o1.frequency.value = 0.31; o2.frequency.value = 0.47;
+    o1.connect(g1); g1.connect(dl.delayTime); o2.connect(g2); g2.connect(dr.delayTime); o1.start(); o2.start();
+    const s = { time: 16, wob: 0.5 };
+    const upd = () => { E.S(dl.delayTime, s.time / 1000); E.S(dr.delayTime, s.time * 1.37 / 1000); E.S(g1.gain, s.wob * 0.0018); E.S(g2.gain, s.wob * 0.0022); };
+    return { i: dw.i, o: dw.o, set(k, v) {
+      if (k === 'mix') return dw.mix(E, v);
+      if (k === 'lc') return E.S(hp.frequency, v);
+      if (k === 'width') { const a = 0.5 + 0.5 * v, b = 0.5 - 0.5 * v; E.S(lL.gain, a); E.S(lR.gain, b); E.S(rR.gain, a); E.S(rL.gain, b); return; }
+      s[k] = v; upd();
+    } };
+  } };
+
+FX_PRESETS.push(
+  { n: '水辺：OTTで「つぶれてキラキラ」（スパソ・ピアノ）', fx: [['ottx', { dep: 0.35 }], ['air', { amt: 0.25 }]] },
+  { n: '水辺：水っぽいボーカル（ダブル＋プレート＋付点ディレイ）', fx: [['eq', { lc: 110, mg: -2, mf: 350, mq: 1.2, hg: 2 }], ['comp', { th: -20, ra: 3, at: 8, re: 120, mk: 3 }], ['doubler', { mix: 0.4 }], ['delay', { sync: '0.75', fb: 0.25, tone: 6000, hp: 300, mix: 0.18 }], ['reverb', { type: 'plate', dec: 2.6, pre: 30, damp: 9000, lc: 300, mix: 0.25 }], ['air', { amt: 0.3, shelf: 2.5 }]] },
+  { n: '水辺：水音をコードで鳴らす（レゾネーター）', fx: [['reso', { mode: 'song', mix: 0.6, dec: 2.5 }], ['reverb', { type: 'hall', dec: 3.5, lc: 250, mix: 0.3 }]] });
+
+/* ============ 水辺のFuture Bass: tools for making the song ============
+   vocal-synth export (MIDI with lyrics / UST), drum pattern switch, droplet arpeggio (probability),
+   reference A/B, load meter, voice leading for chords */
+
+/* ---------- 1. export the melody + lyrics for a singing synthesizer ---------- */
+const SMALL_KANA = 'ゃゅょぁぃぅぇぉゎャュョァィゥェォヮ';
+const LY_SKIP = /[\s、。，．,.!！?？・「」『』（）()"“”'‘’…〜~]/;
+// one lyric clip → syllables: "/" splits explicitly, English splits at spaces, otherwise one kana (+ small kana) per note
+function lyricSyllables(text) {
+  const t = String(text || '').trim(); if (!t) return [];
+  if (t.includes('/') || /[A-Za-z]/.test(t)) return t.split(/[\s/]+/).filter(Boolean);
+  const out = [];
+  for (const ch of t) {
+    if (LY_SKIP.test(ch)) continue;
+    if (SMALL_KANA.includes(ch) && out.length) out[out.length - 1] += ch;
+    else if (/[A-Za-z]/.test(ch) && out.length && /[A-Za-z]$/.test(out[out.length - 1])) out[out.length - 1] += ch;
+    else out.push(ch);
+  }
+  return out;
+}
+// the melody as a single line (beats), each note with its lyric
+function vocalLine(melTr, lyTr, cont) {
+  const bs = beatSec(), ns = [];
+  for (const c of melTr.clips) for (const n of c.notes || []) {
+    if (c.mute) continue; const ts = c.start + n.t * cbs(c) - c.offset;
+    if (ts >= c.start - 1e-6 && ts < c.start + c.len - 1e-6) ns.push({ s: ts, e: Math.min(ts + n.d * cbs(c), c.start + c.len), p: n.p, v: n.v });
+  }
+  ns.sort((a, b) => a.s - b.s || b.p - a.p);
+  const line = []; for (const n of ns) { const last = line[line.length - 1]; if (last && Math.abs(last.s - n.s) < 1e-4) continue; if (last && last.e > n.s) last.e = n.s; line.push(n); }
+  const clips = lyTr ? lyTr.clips.filter(c => c.text != null).slice().sort((a, b) => a.start - b.start) : [];
+  for (const n of line) n.ly = null;
+  for (const c of clips) {
+    const syl = lyricSyllables(c.text); let k = 0;
+    for (const n of line) { if (n.s < c.start - 1e-4 || n.s >= c.start + c.len - 1e-4 || n.ly != null) continue; n.ly = k < syl.length ? syl[k] : cont; k++; }
+  }
+  for (const n of line) { if (n.ly == null) n.ly = 'ら'; n.t = n.s / bs; n.d = (n.e - n.s) / bs; }
+  return line.filter(n => n.d > 1e-4);
+}
+let SJIS_MAP = null;
+function sjisBytes(str) {
+  if (!SJIS_MAP) {
+    SJIS_MAP = new Map(); const dec = new TextDecoder('shift_jis');
+    for (let b = 0xa1; b <= 0xdf; b++) SJIS_MAP.set(dec.decode(new Uint8Array([b])), [b]);
+    for (let a = 0x81; a <= 0xfc; a++) { if (a > 0x9f && a < 0xe0) continue;
+      for (let b = 0x40; b <= 0xfc; b++) { if (b === 0x7f) continue; const ch = dec.decode(new Uint8Array([a, b])); if (ch.length === 1 && ch !== '�' && !SJIS_MAP.has(ch)) SJIS_MAP.set(ch, [a, b]); } }
+  }
+  const out = []; for (const ch of str) { const c = ch.codePointAt(0); if (c < 0x80) out.push(c); else out.push(...(SJIS_MAP.get(ch) || [0x3f])); }
+  return out;
+}
+const enc = (s, sj) => sj ? sjisBytes(s) : [...new TextEncoder().encode(s)];
+function vocalMidi(line, name, sj) {
+  const PPQ = 480, out = [], u32 = v => [v >>> 24 & 255, v >>> 16 & 255, v >>> 8 & 255, v & 255], u16 = v => [v >> 8 & 255, v & 255];
+  const vlq = v => { const b = [v & 127]; while ((v >>= 7)) b.unshift((v & 127) | 128); return b; };
+  const chunk = (id, bytes) => [...[...id].map(c => c.charCodeAt(0)), ...u32(bytes.length), ...bytes];
+  const us = Math.round(60000000 / P.bpm);
+  out.push(...chunk('MThd', [...u16(1), ...u16(2), ...u16(PPQ)]));
+  out.push(...chunk('MTrk', [0, 0xff, 0x51, 3, us >> 16 & 255, us >> 8 & 255, us & 255, 0, 0xff, 0x58, 4, P.num, 2, 24, 8, 0, 0xff, 0x2f, 0]));
+  const nm = enc(name, sj), bytes = [0, 0xff, 0x03, ...vlq(nm.length), ...nm]; let last = 0;
+  for (const n of line) {
+    const a = Math.round(n.t * PPQ), b = Math.max(a + 1, Math.round((n.t + n.d) * PPQ)), ly = enc(n.ly, sj);
+    bytes.push(...vlq(a - last), 0xff, 0x05, ...vlq(ly.length), ...ly, 0, 0x90, n.p, clamp(Math.round(n.v * 127), 1, 127), ...vlq(b - a), 0x80, n.p, 0); last = b;
+  }
+  bytes.push(0, 0xff, 0x2f, 0); out.push(...chunk('MTrk', bytes));
+  return new Uint8Array(out);
+}
+function vocalUst(line, name, sj) {
+  const L = ['[#VERSION]', 'UST Version1.2'];
+  if (!sj) L.push('Charset=UTF-8');
+  L.push('[#SETTING]', 'Tempo=' + P.bpm.toFixed(2), 'Tracks=1', 'ProjectName=' + name, 'Mode2=True');
+  let k = 0, pos = 0; const note = (len, ly, p) => { L.push('[#' + String(k++).padStart(4, '0') + ']', 'Length=' + len, 'Lyric=' + ly, 'NoteNum=' + p, 'Intensity=100', 'Modulation=0'); };
+  for (const n of line) {
+    const a = Math.round(n.t * 480), b = Math.max(a + 1, Math.round((n.t + n.d) * 480));
+    if (a > pos) note(a - pos, 'R', 60);
+    note(b - a, n.ly, n.p); pos = b;
+  }
+  L.push('[#TRACKEND]');
+  const txt = L.join('\r\n') + '\r\n';
+  return new Uint8Array(enc(txt, sj));
+}
+function openVocalExport() {
+  const mids = P.tracks.filter(t => t.type === 'midi' && !isDrumTrack(t)), lys = P.tracks.filter(t => t.type === 'lyric');
+  if (!mids.length) { toast('メロのMIDIトラックがありません'); return; }
+  const m = document.createElement('div'); m.className = 'modal askm vexm';
+  m.innerHTML = `<div class="card glass"><h2>歌声合成用に書き出す</h2><p class="note">メロの音符に歌詞を1文字（1音）ずつ割り当てて書き出します。歌詞トラックの文字は、ひらがな・カタカナは1文字ずつ（ゃゅょは前とくっつく）、英語はスペースで、「/」で区切ると区切りごとに1音になります。歌詞が足りない音符は「伸ばし」になります。</p><div class="sels"></div><p class="note vprev"></p><div class="acts"><button class="no">やめる</button><button class="pri ok">書き出す</button></div></div>`;
+  document.body.appendChild(m);
+  const sel = mids.find(t => t.id === UI.selTrack) || mids[0];
+  const s = { mel: sel.id, ly: lys[0] ? lys[0].id : '', fmt: 'mid', cs: 'utf8' };
+  const box = m.querySelector('.sels'), pv = m.querySelector('.vprev');
+  const prev = () => { const line = vocalLine(P.tracks.find(t => t.id === s.mel), P.tracks.find(t => t.id === s.ly), s.fmt === 'ust' ? 'ー' : '-'); pv.textContent = line.length + '音： ' + line.slice(0, 24).map(n => n.ly).join(' ') + (line.length > 24 ? ' …' : ''); };
+  box.append(
+    selectCtl('メロのトラック', mids.map(t => [t.id, t.name]), s.mel, v => { s.mel = v; prev(); }),
+    selectCtl('歌詞のトラック', [['', 'なし（全部「ら」）'], ...lys.map(t => [t.id, t.name])], s.ly, v => { s.ly = v; prev(); }),
+    selectCtl('形式', [['mid', 'MIDI（歌詞つき）'], ['ust', 'UST（UTAU・OpenUtau）']], s.fmt, v => { s.fmt = v; prev(); }),
+    selectCtl('文字コード', [['utf8', 'UTF-8（Synthesizer V・OpenUtau）'], ['sjis', 'Shift_JIS（UTAU・古いソフト）']], s.cs, v => { s.cs = v; }));
+  prev();
+  const close = () => m.remove();
+  m.querySelector('.no').onclick = close; m.addEventListener('pointerdown', e => { if (e.target === m) close(); });
+  m.querySelector('.ok').onclick = async () => {
+    const mel = P.tracks.find(t => t.id === s.mel), line = vocalLine(mel, P.tracks.find(t => t.id === s.ly), s.fmt === 'ust' ? 'ー' : '-'), sj = s.cs === 'sjis';
+    if (!line.length) { toast('メロのトラックに音符がありません'); return; }
+    const base = safeName(($('#pname').value || '曲') + ' ' + mel.name);
+    const bytes = s.fmt === 'ust' ? vocalUst(line, mel.name, sj) : vocalMidi(line, mel.name, sj);
+    close();
+    const r = await saveOut(new Blob([bytes], { type: s.fmt === 'ust' ? 'text/plain' : 'audio/midi' }), base + (s.fmt === 'ust' ? '.ust' : '.mid'), s.fmt, s.fmt === 'ust' ? 'UST' : 'MIDI');
+    if (r) toast(line.length + '音を書き出しました。歌声合成ソフトで読み込んでね', 4000);
+  };
+}
+
+/* ---------- 2. drum pattern switch: replace a drum clip's notes with half-time / four-on-the-floor / a fill ---------- */
+// which note plays what: drum-pad tracks by pad name, everything else by General MIDI numbers
+function drumRoles(tr) {
+  const R = { kick: 36, snare: 38, clap: 39, hat: 42, ohat: 46, shaker: 70, crash: 49 };
+  if (tr.inst.type !== 'pads') return R;
+  const pads = tr.inst.p.pads || [], find = re => { const i = pads.findIndex(p => p && p.src && re.test(p.name || '')); return i < 0 ? null : 36 + i; };
+  return { kick: find(/キック|kick/i) ?? 36, snare: find(/スネア|snare|スネクラ/i), clap: find(/クラップ|clap/i), hat: find(/^(?!.*(オープン|open)).*(ハット|hat)/i),
+    ohat: find(/オープン|open/i), shaker: find(/シェイカー|shaker|タンバ|tamb/i), crash: find(/クラッシュ|crash/i) };
+}
+const isDrumTrack = tr => !!(tr && tr.type === 'midi' && tr.inst && (tr.inst.type === 'pads' || isDrumInst(tr.inst)));
+function drumBar(kind, R, bar) {
+  const n = [], N = (p, t, v, d = 0.25) => { if (p != null) n.push({ p, t, d, v }); };
+  const back = (t, v) => { N(R.snare, t, v); N(R.clap, t, v * 0.9); if (R.snare == null && R.clap == null) N(38, t, v); };
+  if (kind === 'half') {
+    (bar % 2 ? [0, 1.5, 2.5] : [0, 2.5]).forEach((t, i) => N(R.kick, t, i ? 0.85 : 1, 0.5));
+    back(2, 0.9);
+    for (let i = 0; i < 8; i++) N(R.hat, i / 2, i % 2 ? 0.5 : 0.35);
+    if (R.shaker != null) for (let i = 0; i < 16; i++) if (i % 2) N(R.shaker, i / 4, 0.3);
+  } else if (kind === 'four') {
+    for (let b = 0; b < 4; b++) { N(R.kick, b, b ? 0.9 : 1, 0.5); N(R.ohat ?? R.hat, b + 0.5, 0.55); }
+    back(1, 0.9); back(3, 0.9);
+    if (R.ohat != null && R.hat != null) for (let i = 0; i < 16; i++) if (i % 4 === 1 || i % 4 === 3) N(R.hat, i / 4, 0.28);
+    if (R.shaker != null) for (let i = 0; i < 8; i++) N(R.shaker, i / 2 + 0.25, 0.25);
+  } else if (kind === 'fill') { // a one-bar snare roll that speeds up and gets louder
+    N(R.kick, 0, 1, 0.5);
+    const hits = [0, 0.5, 1, 1.5, 2, 2.25, 2.5, 2.75, 3, 3.125, 3.25, 3.375, 3.5, 3.625, 3.75, 3.875];
+    hits.forEach((t, i) => { const v = 0.35 + 0.6 * i / (hits.length - 1); N(R.snare ?? R.clap ?? 38, t, v, 0.12); });
+  }
+  if (bar === 0 && kind !== 'fill') N(R.crash, 0, 0.6, 1);
+  return n;
+}
+function setDrumPattern(tr, c, kind) {
+  const R = drumRoles(tr), bs = cbs(c), b0 = c.offset / bs, beats = c.len / bs, bars = Math.max(1, Math.round(beats / 4));
+  act(() => {
+    if (kind === 'fill') { const lb = b0 + Math.max(0, beats - 4); c.notes = c.notes.filter(n => n.t < lb - 1e-6); c.notes.push(...drumBar('fill', R, 0).map(n => ({ ...n, t: n.t + lb }))); }
+    else { const out = []; for (let k = 0; k < bars; k++) out.push(...drumBar(kind, R, k).map(n => ({ ...n, t: n.t + b0 + 4 * k }))); c.notes = out.filter(n => n.t < b0 + beats - 1e-6); }
+  }, { live: true });
+  toast({ half: 'ハーフタイム', four: '4つ打ち', fill: 'フィル（最後の1小節）' }[kind] + 'にしました（Ctrl+Zで戻せます）', 2500);
+}
+{ const _cm = clipMenu; clipMenu = function (h, at, t) {
+  const orig = popMenu;
+  if (h.c.notes && isDrumTrack(h.tr)) popMenu = (a, groups) => { popMenu = orig; groups.push({ items: [{ l: 'ドラムの型を差し替え…', on: () => setTimeout(() => orig(a, [{ head: 'ドラムの型', items: [
+    { l: 'ハーフタイム（ゆったり、3拍目にスネア）', on: () => setDrumPattern(h.tr, h.c, 'half') },
+    { l: '4つ打ち（毎拍キック、2・4拍にスネア）', on: () => setDrumPattern(h.tr, h.c, 'four') },
+    { l: 'フィル（最後の1小節をスネアロールに）', on: () => setDrumPattern(h.tr, h.c, 'fill') }] }]), 0) }] }); return orig(a, groups); };
+  try { return _cm(h, at, t); } finally { popMenu = orig; }
+}; }
+
+/* ---------- 3. reference track A/B: hear a favourite song in place of your mix, at the same loudness ---------- */
+const REF = { buf: null, name: '', b: false, src: null, g: null, match: true, gainDb: 0 };
+function refSliceLufs(pos) {
+  const b = REF.buf, sr = b.sampleRate, a = Math.max(0, Math.floor((pos - 1.5) * sr)), n = Math.min(b.length - a, Math.floor(3 * sr));
+  if (n < sr) return lufs(b);
+  const s = new AudioBuffer({ length: n, numberOfChannels: b.numberOfChannels, sampleRate: sr });
+  for (let ch = 0; ch < b.numberOfChannels; ch++) s.copyToChannel(b.getChannelData(ch).subarray(a, a + n), ch);
+  return lufs(s);
+}
+function refStop() { if (REF.src) { try { REF.src.stop(); } catch (e) {} REF.src = null; } }
+function refStart() {
+  refStop(); if (!REF.b || !REF.buf || !T.playing) return;
+  const pos = curPos(); if (pos >= REF.buf.duration) return;
+  if (REF.match) { const mix = isFinite(LU.s) && LU.s > -60 ? LU.s : -14, rl = refSliceLufs(pos); REF.gainDb = isFinite(rl) ? clamp(mix - rl, -30, 12) : 0; } else REF.gainDb = 0;
+  REF.g = gn(ac, db2g(REF.gainDb)); REF.g.connect(ac.destination);
+  REF.src = ac.createBufferSource(); REF.src.buffer = REF.buf; REF.src.connect(REF.g); REF.src.start(ac.currentTime + 0.01, pos);
+  const l = document.querySelector('.refc .refg'); if (l) l.textContent = REF.match ? `音量 ${REF.gainDb >= 0 ? '+' : ''}${REF.gainDb.toFixed(1)} dB でそろえています` : '';
+}
+// B: the mix still runs (meters keep moving) but is not sent to the speakers
+function refRoute() {
+  if (!LG || !ac) return;
+  try { LG.master.fader.disconnect(ac.destination); } catch (e) {}
+  if (!REF.b) LG.master.fader.connect(ac.destination);
+}
+function refSet(b) { REF.b = b && !!REF.buf; refRoute(); if (REF.b) refStart(); else refStop(); renderRefCard(); }
+{ const _rb = rebuildLive; rebuildLive = function () { const r = _rb.apply(this, arguments); if (REF.b) refRoute(); return r; }; }
+{ const _pl = play; play = function () { const r = _pl.apply(this, arguments); if (REF.b) refStart(); return r; }; }
+{ const _pa = pause; pause = function () { refStop(); return _pa.apply(this, arguments); }; }
+async function refLoad() {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'audio/*,.wav,.mp3,.flac,.ogg,.m4a';
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0]; if (!f) return; ensureAC();
+    try { REF.buf = await ac.decodeAudioData(await f.arrayBuffer()); REF.name = f.name.replace(/\.[^.]+$/, ''); toast('リファレンス曲「' + REF.name + '」を読み込みました。B を押すと切り替わります', 4000); }
+    catch (e) { toast('この音声ファイルは読めませんでした'); return; }
+    renderRefCard();
+  };
+  inp.click();
+}
+function renderRefCard() {
+  const c = document.querySelector('.refc'); if (!c) return;
+  c.innerHTML = '';
+  const row = el('div', 'bandsolo refab', '<span>比べる</span>');
+  const ld = el('button', '', REF.buf ? '別の曲…' : 'リファレンス曲を読み込む…'); ld.onclick = refLoad;
+  const a = el('button', REF.b ? '' : 'on', 'A 自分'), b = el('button', REF.b ? 'on' : '', 'B お手本');
+  a.onclick = () => refSet(false); b.onclick = () => { if (!REF.buf) { refLoad(); return; } refSet(true); }; a.title = '自分の曲を聴く (Ctrl+B で切り替え)'; b.title = 'リファレンス曲を、今の再生位置から聴く (Ctrl+B で切り替え)';
+  row.append(ld, a, b); c.appendChild(row);
+  if (!REF.buf) return;
+  const mt = el('label', 'refm'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = REF.match; cb.onchange = () => { REF.match = cb.checked; if (REF.b) refStart(); };
+  mt.append(cb, document.createTextNode(' 音量をそろえる（今の場所のラウドネスを合わせる）')); c.appendChild(mt);
+  if (REF.buf) c.appendChild(el('div', 'note refg', '「' + escH(REF.name) + '」' + (REF.b ? ' を再生中' : '（Ctrl+B で切り替え）')));
+  else ld.title = 'PSYQUIさんやSharouさんの曲を読み込むと、ボタン1つで自分の曲と聴き比べられます（マスターのエフェクトはかかりません）';
+}
+{ const _rmp = renderMasterPane; renderMasterPane = function () { const r = _rmp.apply(this, arguments); const c = el('div', 'refc'), host = pane.querySelector('.mcard') || pane; host.appendChild(c); renderRefCard(); return r; }; }
+window.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'b' && REF.buf && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName)) { e.preventDefault(); refSet(!REF.b); } }, true);
+
+/* ---------- 4. load meter: how heavy each track is on this PC (rendered alone for a moment, timed) ---------- */
+async function measureTrackLoad(tr, from, secs) {
+  const sr = ac ? ac.sampleRate : 44100, oc = new OfflineAudioContext(2, Math.ceil(secs * sr), sr);
+  await loadWorklet(oc);
+  const keep = P.tracks;
+  try {
+    if (tr) P.tracks = [tr, ...keep.filter(t => t.type === 'bus' && (tr.out === t.id || Object.keys(tr.sends || {}).includes(t.id)))];
+    const G = buildGraph(oc, { masterFx: !tr });
+    scheduleAll(oc, G, from, from + secs, 0, null);
+    for (const s of G.starters) s.start(0, from);
+  } finally { P.tracks = keep; }
+  const t0 = performance.now(); await oc.startRendering(); return (performance.now() - t0) / 1000 / secs;
+}
+async function openLoadMeter() {
+  ensureAC();
+  const m = document.createElement('div'); m.className = 'modal askm loadm';
+  m.innerHTML = `<div class="card glass"><h2>重さメーター</h2><p class="note">再生位置から1秒ぶんを、トラックごとに1つずつ計算して時間を測ります。数字は「このパソコンの処理の何%を使うか」の目安です。</p><div class="ldl"><p class="note">測っています…</p></div><div class="acts"><button class="pri ok">閉じる</button></div></div>`;
+  document.body.appendChild(m);
+  const close = () => m.remove(); m.querySelector('.ok').onclick = close; m.addEventListener('pointerdown', e => { if (e.target === m) close(); });
+  const list = m.querySelector('.ldl');
+  try {
+    await ensureLibs(); await ensureDerivedAll();
+    const from = UI.pos, trs = P.tracks.filter(t => t.type !== 'lyric' && t.type !== 'bus' && t.clips.length), res = [];
+    await measureTrackLoad(trs[0] || null, from, 0.3); // warm up
+    for (const tr of trs) { if (!m.isConnected) return; res.push([tr, await measureTrackLoad(tr, from, 1)]); list.querySelector('.note').textContent = `測っています… ${res.length}/${trs.length}`; }
+    const total = await measureTrackLoad(null, from, 1);
+    res.sort((a, b) => b[1] - a[1]); list.innerHTML = '';
+    const row = (name, v, col) => { const r = el('div', 'ldr'); r.innerHTML = `<span class="ldn"></span><span class="ldb"><i style="width:${Math.min(100, v * 100)}%;background:${col}"></i></span><b>${Math.round(v * 100)}%</b>`; r.querySelector('.ldn').textContent = name; list.appendChild(r); };
+    row('曲全体（マスター込み）', total, total > 0.6 ? '#ff6b6b' : total > 0.35 ? '#ffc35a' : '#6fdc8c');
+    for (const [tr, v] of res) row(tr.name, v, v > 0.25 ? '#ff6b6b' : v > 0.1 ? '#ffc35a' : '#6fdc8c');
+    const heavy = res.filter(x => x[1] > 0.15).map(x => x[0].name);
+    list.appendChild(el('p', 'note', total > 0.5 ? `曲全体で${Math.round(total * 100)}%。学校のパソコンだとカクつきやすい重さです。` + (heavy.length ? `重いトラック（${escH(heavy.slice(0, 3).join('、'))}）のトラック名を右クリック →「オーディオに固める（バウンス）」にすると軽くなります。` : '') : `曲全体で${Math.round(total * 100)}%。まだ余裕があります。`));
+  } catch (e) { list.innerHTML = ''; list.appendChild(el('p', 'note', '測れませんでした: ' + escH(e.message || e))); }
+}
+{ const _rmp2 = renderMasterPane; renderMasterPane = function () { const r = _rmp2.apply(this, arguments); const c = el('div', 'bandsolo ldc', '<span>重さ</span>'); const b = el('button', '', '重さメーター（どのトラックが重い？）'); b.onclick = openLoadMeter; c.appendChild(b); (pane.querySelector('.mcard') || pane).appendChild(c); return r; }; }
+
+/* ---------- 5. voice leading: each chord takes the inversion closest to the one before, so the chords flow ---------- */
+function leadVoicing() {
+  const f = rollClip(); if (!f) return; const { c } = f, idx = R.sel.size ? [...R.sel] : c.notes.map((_, i) => i);
+  const groups = new Map(); for (const i of idx) { const k = Math.round(c.notes[i].t * 1e4); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c.notes[i]); }
+  const gs = [...groups.entries()].sort((a, b) => a[0] - b[0]).map(x => x[1].sort((a, b) => a.p - b.p)).filter(g => g.length > 1);
+  if (gs.length < 2) { toast('コードを2つ以上選んでください（何も選ばなければ全部）'); return; }
+  let moved = 0;
+  act(() => {
+    let prev = gs[0].map(n => n.p);
+    for (let gi = 1; gi < gs.length; gi++) {
+      const g = gs[gi], pcs = g.map(n => ((n.p % 12) + 12) % 12), mean = prev.reduce((a, b) => a + b, 0) / prev.length;
+      let best = null;
+      for (let r = 0; r < pcs.length; r++) {
+        const rot = pcs.slice(r).concat(pcs.slice(0, r)), v = []; let last = -Infinity;
+        for (const pc of rot) { let m = pc + 12 * Math.floor((mean - 12) / 12); while (m <= last) m += 12; v.push(m); last = m; }
+        for (const sh of [-24, -12, 0, 12, 24]) {
+          const w = v.map(p => p + sh); if (w[0] < 36 || w[w.length - 1] > 96) continue;
+          const cost = w.reduce((a, p) => a + Math.min(...prev.map(q => Math.abs(p - q))), 0) + Math.abs(w.reduce((a, b) => a + b, 0) / w.length - mean) * 0.5;
+          if (!best || cost < best.cost) best = { cost, w };
+        }
+      }
+      if (!best) { prev = g.map(n => n.p); continue; }
+      const order = g.map((n, k) => ({ n, pc: pcs[k] })), used = new Set();
+      for (const p of best.w) { const o = order.find((x, k) => !used.has(k) && x.pc === ((p % 12) + 12) % 12); if (!o) continue; used.add(order.indexOf(o)); if (o.n.p !== p) moved++; o.n.p = p; }
+      prev = g.map(n => n.p).sort((a, b) => a - b);
+    }
+  }, { live: true });
+  R.dirty = true;
+  toast(moved ? `${gs.length}個のコードをなめらかにつなげました（${moved}音を動かした・Ctrl+Zで戻せます）` : 'もうなめらかにつながっています', 3500);
+}
+{ const btn = $('#rChords'), _oc = btn.onclick; btn.onclick = e => {
+  const orig = popMenu;
+  popMenu = (a, groups) => { popMenu = orig; const g = groups.find(x => /形/.test(x.head || '')); const it = { l: 'ボイシングを自動で整える（なめらかにつなぐ）', on: () => leadVoicing() }; if (g) g.items.unshift(it); else groups.push({ items: [it] }); return orig(a, groups); };
+  try { return _oc.call(btn, e); } finally { popMenu = orig; }
+}; }
+
 /* ============ top bar wiring ============ */
 $('#play').onclick = togglePlay;
 $('#kbBtn').onclick = () => { setKb(!KB.on); $('#kbBtn').blur(); };
@@ -8663,7 +9133,7 @@ $('#zOut').onclick = () => zoomTo(UI.pps / 1.4, xT(W / 2), W / 2);
 $('#fileBtn').onclick = e => { const r = e.currentTarget.getBoundingClientRect(); popMenu({ x: r.left, y: r.bottom + 4 }, [{ items: [
   { l: '新しい曲', on: () => $('#newBtn').click() }, { l: '開く…', k: 'Ctrl+O', on: () => openProjectDialog() }, { l: '保存', k: 'Ctrl+S', on: () => saveProject() }, { l: '名前を付けて保存…', k: 'Ctrl+Shift+S', on: () => saveProject(true) }] },
   { items: [{ l: '新しい曲（テンプレートから）…', on: () => templateMenu({ x: r.left, y: r.bottom + 4 }) }, { l: '今の曲をテンプレートとして保存…', on: () => saveTemplate() }] },
-  { items: [{ l: '書き出し（WAV・MP3・MIDIなど）…', k: 'Ctrl+E', on: () => openExport() }, { l: 'オーディオ・MIDIファイルを読み込む…', on: () => { ensureAC(); $('#fileWav').click(); } }] },
+  { items: [{ l: '書き出し（WAV・MP3・MIDIなど）…', k: 'Ctrl+E', on: () => openExport() }, { l: '歌声合成用に書き出す（歌詞つきMIDI・UST）…', on: () => openVocalExport() }, { l: 'オーディオ・MIDIファイルを読み込む…', on: () => { ensureAC(); $('#fileWav').click(); } }] },
   { items: [{ l: 'バックアップの履歴（前の状態に戻す）…', on: () => openHistory() }, { l: 'オーディオ設定（マイク・出力・遅れ）…', on: () => openAudioSettings() }, ...(window.desktop && window.desktop.update ? [{ l: 'アップデートを確認', on: () => appUpdate(true) }] : [])] }]); };
 // key in the top bar (BandLab shows the song key next to the tempo)
 (() => {

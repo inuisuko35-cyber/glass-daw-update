@@ -1,8 +1,8 @@
 {
- "build": 202611081547,
- "sha256": "c9c63d83d795a97f124314051582475bf56369c784eb73e4847fce01ca5fe1f0",
+ "build": 202611090138,
+ "sha256": "d4c97e1d6794599f6c7bc8e1f813611a4559bfdadadfcc27d2f3baaaf3de385e",
  "shell": 2,
- "note": "選んだ音の強さをまとめて変える",
+ "note": "水辺の機能11個：OTT・レゾネーター・エアー・ダブラー・歌声合成書き出し・ドラムの型・しずく・リファレンス・重さメーター・ボイシング",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
