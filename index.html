@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611090346">
+<meta name="gd-build" content="202611090403">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -797,6 +797,7 @@ body:has(.modal:not([hidden])) #toast{top:auto;bottom:28px}
 .th .frzb { flex: none; font-size: 11px; line-height: 1; padding: 3px 5px; border-radius: 6px; margin-right: 4px; background: rgba(122,200,255,.16); color: #9fd8ff; cursor: default; }
 .th .frzb.stale { background: rgba(255,200,90,.18); color: #ffd27a; cursor: pointer; }
 .th .frzb.busy { opacity: .7; }
+.rhym button.on{background:var(--acc,#ff4d6d);color:#fff}
 </style>
 </head>
 <body>
@@ -9261,13 +9262,18 @@ async function rhSampler(e) {
   toast('「' + e.n + '」を鍵盤で弾けるようにしました（' + (e.k || 'C') + '4 で元の音程）', 3500);
 }
 let RH_PV = null;
-function rhStopPv() { if (RH_PV) { try { RH_PV.stop(); } catch (er) {} RH_PV = null; } }
-async function rhPreview(e) {
-  ensureAC(); rhStopPv(); let s; try { s = await kitSource(e.pk, e.c, e.f); } catch (er) { toast('読み込めませんでした'); return; }
+let RH_BTN = null;
+function rhBtn(b, t) { if (b) { b.textContent = t; b.classList.toggle('on', t !== '▶'); } }
+function rhStopPv() { if (RH_PV) { try { RH_PV.onended = null; RH_PV.stop(); } catch (er) {} RH_PV = null; } rhBtn(RH_BTN, '▶'); RH_BTN = null; }
+async function rhPreview(e, btn) {
+  if (btn && RH_BTN === btn) { rhStopPv(); return; } // pressing ■ stops
+  ensureAC(); rhStopPv(); RH_BTN = btn || null; rhBtn(btn, '…');
+  let s; try { s = await kitSource(e.pk, e.c, e.f); } catch (er) { rhBtn(btn, '▶'); if (RH_BTN === btn) RH_BTN = null; toast('読み込めませんでした'); return; }
+  if (btn && RH_BTN !== btn) return; rhBtn(btn, '■');
   const src = ac.createBufferSource(), g = ac.createGain(); src.buffer = s.buf; g.gain.value = 0.8;
   const sh = RH_OPT.key ? rhShift(e) : 0, sp = RH_OPT.tempo && e.b ? P.bpm / e.b : 1;
   src.playbackRate.value = Math.pow(2, sh / 12); // a quick preview: the pitch moves with the speed (the placed clip keeps its length)
-  src.connect(g); g.connect(ac.destination); src.start(); RH_PV = src; src.onended = () => { if (RH_PV === src) RH_PV = null; };
+  src.connect(g); g.connect(ac.destination); src.start(); RH_PV = src; src.onended = () => { if (RH_PV === src) { RH_PV = null; rhBtn(RH_BTN, '▶'); RH_BTN = null; } };
 }
 function openRhyx(opt = {}) {
   const m = document.createElement('div'); m.className = 'modal vstm kitm rhym';
@@ -9297,7 +9303,7 @@ function openRhyx(opt = {}) {
       const h = el('div', 'vsth'); h.textContent = n + '（' + list.length + '）'; box.appendChild(h);
       for (const e of list) {
         const row = el('div', 'krow'), pv = el('button', 'ic kplay', '▶'), nm = el('button', 'knm', '');
-        nm.textContent = e.n; pv.title = '試聴'; if (e.mo) { pv.disabled = true; pv.textContent = '♪'; } else { pv.onclick = () => rhPreview(e); nm.onclick = () => rhPreview(e); }
+        nm.textContent = e.n; pv.title = '試聴'; if (e.mo) { pv.disabled = true; pv.textContent = '♪'; } else { pv.onclick = () => rhPreview(e, pv); nm.onclick = () => rhPreview(e, pv); }
         const tag = el('span', 'rhtag'); tag.textContent = [pack === 'all' ? (e.pk === 'rhyx3' ? 'V3' : 'V4') : '', rhKeyLabel(e), e.b ? e.b + 'BPM' : '', e.mo ? 'MIDIのみ' : ''].filter(Boolean).join(' · ');
         const sh = RH_OPT.key ? rhShift(e) : 0; if (Math.abs(sh) > 1e-3) tag.title = '置くときに ' + (sh > 0 ? '+' : '') + (Math.round(sh * 10) / 10) + '半音 動かして曲のキーに合わせます';
         row.append(pv, nm, tag);

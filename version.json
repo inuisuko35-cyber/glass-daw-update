@@ -1,8 +1,8 @@
 {
- "build": 202611090346,
- "sha256": "fc3f76c6d6db0ff39cc9c391802495abdfdeb108533b9142b1e37e8c611b5935",
+ "build": 202611090403,
+ "sha256": "6f8a7f16e2ea254d7583abab56245ecb875b87ef078268d578fa7d5ad3c7bd36",
  "shell": 2,
- "note": "キットをOggで読む",
+ "note": "試聴ボタンが再生中は■に",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
