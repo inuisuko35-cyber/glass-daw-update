@@ -1,8 +1,8 @@
 {
- "build": 202611090407,
- "sha256": "399968fbc279311d3d38772e91fb31e987b6cd1aed54fefb3666ae867c818f64",
+ "build": 202611090912,
+ "sha256": "f7a791749fda288367e78845192b551dd292c3a9cde0f19267318bc090a4cd60",
  "shell": 2,
- "note": "音が見つからないときはフォルダを選んで読む",
+ "note": "ALL IN RHYX にお気に入り（☆）を追加",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
