@@ -1,8 +1,8 @@
 {
- "build": 202611090201,
- "sha256": "058c79a8d6984267e64386fe21db3ce28bdb8ba3bc4293fdb790a4b3e2c2c677",
+ "build": 202611090225,
+ "sha256": "cd3a9a456d49458979c92b50e4ecce7e6e3de9ab79e0cf538af6c25c3facf45a",
  "shell": 2,
- "note": "ALL IN RHYX 専用の枠（キー・テンポ自動合わせ）",
+ "note": "軽量化：フリーズ、Rust版OTT・レゾネーター、待機中の画面更新を削減",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
