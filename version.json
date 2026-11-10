@@ -1,8 +1,8 @@
 {
- "build": 202611091104,
- "sha256": "23a54fb841b2c6c09e11c03c5acebbb64fe74b79404e810959e487b6872a1244",
+ "build": 202611100017,
+ "sha256": "8dc08d36d1d78b80c878bda496b2d4d7859e309b2e9e9a7a78bcc5006d3c05c4",
  "shell": 2,
- "note": "bespoke - Floral を追加（音はzipで取り込み）",
+ "note": "テープストップ（トラック・曲全体）を追加",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
