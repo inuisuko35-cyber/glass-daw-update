@@ -1,8 +1,8 @@
 {
- "build": 202611100314,
- "sha256": "695fc377fb37bc045e59c49ef2cefdcc53560e64b0754f8a6dc312c77fec3370",
+ "build": 202611100359,
+ "sha256": "2faa752ab739fa1fde0c363c9845f82026705156c6f4b40a4013ce3d9a23df71",
  "shell": 2,
- "note": "音源追加：Black Octopus Techno & Tech と Vocal Philosophy 2 を音源ブラウザに",
+ "note": "音源追加：Code Sounds - Fusion Downtempo Breaks を音源ブラウザに",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
