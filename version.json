@@ -1,8 +1,8 @@
 {
- "build": 202611100953,
- "sha256": "bed3e09946c711c9e6f886bc7bfc3c2b6471250a49b102a04ce65d77b31fbb62",
+ "build": 202611100956,
+ "sha256": "91cb78cc6729ca0cdeedce4222ff10cfcb5e2135bf4dbd7dc946d8e3d1581a68",
  "shell": 2,
- "note": "見た目を整えた：クリップの色、グリッド、ミキサー、メニューなど（重さは変わらず）",
+ "note": "ピアノロールの「ツール」に、選んだ音の長さと位置を半分／2倍にする機能を追加",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
