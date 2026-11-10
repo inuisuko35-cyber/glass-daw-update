@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611100817">
+<meta name="gd-build" content="202611100953">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -815,6 +815,86 @@ body:has(.modal:not([hidden])) #toast{top:auto;bottom:28px}
 .arrrow{flex-wrap:nowrap;min-width:0}
 .arrtpl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .arrBtn{width:auto!important;padding:0 8px;font-size:12px;font-weight:700}
+
+/* ============ polish (2026-11): quieter lines, clearer states. Only flat colours and 1px lines: no blur, no shadows that move, nothing drawn per frame ============ */
+:root{--line:#2a2a30;--line2:#3b3b43;--hover:#38383f;--focus:rgba(79,140,255,.75)}
+*{scrollbar-width:thin;scrollbar-color:#3d3d45 transparent}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#3d3d45;border-radius:5px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#55555f;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+button{transition:background-color .08s linear,color .08s linear}
+button:hover{background:var(--hover)}
+button.on:hover{background:#6a9dff}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+button:focus:not(:focus-visible){outline:none}
+select,input[type=number]{transition:border-color .08s linear}
+select:hover,input[type=number]:hover{border-color:var(--line2)}
+/* sliders: a thin track, a crisp white thumb with a dark ring */
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:#3a3a42}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:#3a3a42}
+input[type=range]::-webkit-slider-thumb{width:12px;height:12px;margin-top:-4.5px;background:#f1f1f3;box-shadow:0 0 0 2px var(--bg0)}
+input[type=range]::-moz-range-thumb{width:12px;height:12px;background:#f1f1f3;box-shadow:0 0 0 2px var(--bg0)}
+input[type=range]:hover::-webkit-slider-thumb{background:#fff}
+input[type=range]:disabled::-webkit-slider-thumb{background:#77777f}
+/* top bar */
+#bar.glass{background:#1c1c20}
+#pname{font-weight:700;font-size:14px;letter-spacing:.01em}
+#bar .grp.tr{gap:6px}
+.lcd #pbar{font-size:18px;letter-spacing:.03em}
+.lcd #ptime{color:var(--ink-3);letter-spacing:.04em}
+#bar label.f>span,#bar .sig{color:var(--ink-3);font-size:11px;letter-spacing:.04em}
+/* track list */
+#headTop span{letter-spacing:.12em;font-weight:600}
+.th{background:#1f1f23;border-bottom:1px solid var(--bg0)}
+.th.sel{background:#2a2a30;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.th::before{width:4px}
+.th.sel::before{width:6px}
+.th .nm{letter-spacing:.01em}
+.th button{background:#2e2e35;color:var(--ink-2)}
+.th button:hover{background:#3b3b44;color:var(--ink)}
+.th button.on{color:#fff}
+.th button.m.on{color:#121214}
+.th .ti{border-radius:7px;background:color-mix(in srgb,var(--c) 34%,#1f1f23);color:color-mix(in srgb,var(--c) 45%,#fff)}
+.th .r3 .sub{color:var(--ink-3)}
+.pk{background:#17171a;box-shadow:inset 0 0 0 1px var(--line2)}
+.addTh{letter-spacing:.02em}
+/* bottom bar: the open panel is marked by a line of the accent colour, not a filled blue box */
+#tabs [data-tab]{box-shadow:none;background:transparent;border-radius:8px}
+#tabs [data-tab]:hover{background:var(--bg2);color:var(--ink)}
+#tabs [data-tab].on{background:transparent}
+#tabs [data-tab].open{background:var(--bg3);box-shadow:inset 0 -2px 0 var(--accent);color:#fff;font-weight:700}
+#dockGrip::after{background:#3a3a42}
+#dockGrip:hover::after{background:var(--accent)}
+/* menus */
+.menu{border-radius:10px;padding:6px;background:#212126;border:1px solid var(--line2);box-shadow:0 10px 30px rgba(0,0,0,.55)}
+.menu button{border-radius:6px;padding:0 10px}
+.menu button:hover{background:#34343c}
+.menu .k{color:var(--ink-3);letter-spacing:.02em}
+.menu .sep{background:var(--line2);margin:5px 4px}
+.menu .mh{letter-spacing:.1em;font-weight:600}
+/* windows */
+.modal{background:rgba(8,8,10,.66)}
+.modal .card{border-radius:12px;border-color:var(--line2);box-shadow:0 18px 50px rgba(0,0,0,.6)}
+.modal h2{letter-spacing:.01em}
+.card{border-radius:10px}
+#toast{background:#26262c;border:1px solid var(--line2);box-shadow:0 6px 18px rgba(0,0,0,.45);color:var(--ink)}
+/* mixer */
+.strip{background:#1f1f23;box-shadow:inset 0 0 0 1px var(--line);border-radius:10px}
+.strip.sel{background:#28282e;box-shadow:inset 0 0 0 1px var(--line2)}
+.strip.master{background:#22242c;box-shadow:inset 0 0 0 1px #343848}
+.strip .sn b{letter-spacing:.01em}
+.strip .meter{width:6px;border-radius:3px;background:#101012;box-shadow:inset 0 0 0 1px var(--line)}
+.strip button{background:#2e2e35;color:var(--ink-2)}
+.strip button:hover{background:#3b3b44;color:var(--ink)}
+.strip button.on{color:#121214}
+.strip .fxs{box-shadow:inset 0 0 0 1px var(--line2)}
+#mmeter{background:#101012;box-shadow:inset 0 0 0 1px var(--line)}
+/* segmented buttons and knobs */
+.seg{background:#141417;box-shadow:inset 0 0 0 1px var(--line)}
+.knob .kt{stroke:#3a3a42}
+.knob .kl{color:var(--ink-3)}
+.knob:hover .kl{color:var(--ink-2)}
 </style>
 </head>
 <body>
@@ -3589,7 +3669,7 @@ function draw() {
   // lanes
   P.tracks.forEach((tr, i) => {
     const y = laneY(i); if (y + TH < RULER || y > Hh) return;
-    if (UI.selTrack === tr.id) { c.fillStyle = 'rgba(255,255,255,.035)'; c.fillRect(0, y, W, TH); }
+    if (UI.selTrack === tr.id) { c.fillStyle = 'rgba(255,255,255,.045)'; c.fillRect(0, y, W, TH); }
     c.fillStyle = 'rgba(255,255,255,.07)'; c.fillRect(0, y + TH - 1, W, 1);
     if (!tr.clips.length && (tr.type === 'midi' || tr.type === 'audio') && !(REC.on && REC.tr === tr)) { c.fillStyle = 'rgba(243,246,255,.26)'; c.font = '12px ' + FONT; c.textBaseline = 'middle'; c.fillText(tr.type === 'midi' ? 'ダブルクリックでMIDIクリップを作って打ち込む（右クリックでメニュー）' : 'WAVをここにドロップ／ダブルクリックでファイルを選ぶ', 14, y + TH / 2); }
     if (tr.type === 'lyric' && !tr.clips.length) { c.fillStyle = 'rgba(243,246,255,.3)'; c.font = '12px ' + FONT; c.textBaseline = 'middle'; c.fillText('ダブルクリックで歌詞を書く／右クリック →「歌詞をまとめて流し込む」で一気に並べる', 14, y + TH / 2); }
@@ -3602,9 +3682,18 @@ function draw() {
     const sEnd = si + 1 < SG.length ? SG[si + 1].t0 : Infinity; if (sEnd < t0 || S.t0 > t1) return;
     const bs = S.bs, br = S.num * bs, g16 = bs / 4, showBeat = bs * pps >= 10, show16 = g16 * pps >= 9 && (P.snap === '16' || P.snap === '8');
     const step = show16 ? (P.snap === '8' ? bs / 2 : g16) : showBeat ? bs : br;
+    if (br * pps >= 20 && gridBottom > RULER) { // every other bar a touch lighter, so the eye can count bars
+      c.fillStyle = 'rgba(255,255,255,.022)';
+      for (let k = Math.max(0, Math.floor((t0 - S.t0) / br)); S.t0 + k * br <= Math.min(t1, sEnd - 1e-6); k++) {
+        if (((S.bar0 || 0) + k) % 2 === 0) continue;
+        const xa = tX(S.t0 + k * br), xb = Math.min(tX(Math.min(S.t0 + (k + 1) * br, sEnd)), W);
+        c.fillRect(xa, RULER, xb - xa, gridBottom - RULER);
+      }
+    }
     for (let k = Math.max(0, Math.floor((t0 - S.t0) / step)); S.t0 + k * step <= Math.min(t1, sEnd - 1e-6); k++) {
       const r = k * step, x = Math.round(tX(S.t0 + r)) + .5, isBar = Math.abs(r / br - Math.round(r / br)) < 1e-6, isBeat = Math.abs(r / bs - Math.round(r / bs)) < 1e-6;
-      c.strokeStyle = isBar ? 'rgba(255,255,255,.16)' : isBeat ? 'rgba(255,255,255,.07)' : 'rgba(255,255,255,.035)';
+      const is4 = isBar && ((S.bar0 || 0) + Math.round(r / br)) % 4 === 0;
+      c.strokeStyle = is4 ? 'rgba(255,255,255,.2)' : isBar ? 'rgba(255,255,255,.11)' : isBeat ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.028)';
       c.beginPath(); c.moveTo(x, RULER); c.lineTo(x, Math.max(gridBottom, RULER)); c.stroke();
     }
   });
@@ -3674,14 +3763,24 @@ function drawHead(pos) {
 }
 function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, Math.max(0, w), h, Math.min(r, Math.abs(w) / 2)); }
 function hexA(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+// the colours of a clip, worked out once per track colour: body (colour over charcoal), ink (a light tint for notes and waves)
+const CLIP_COLS = new Map();
+function clipCols(hex) {
+  let o = CLIP_COLS.get(hex); if (o) return o;
+  const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  const mix = (k, R, G, B) => `rgb(${Math.round(r * k + R * (1 - k))},${Math.round(g * k + G * (1 - k))},${Math.round(b * k + B * (1 - k))})`;
+  o = { body: mix(.36, 24, 24, 28), bodyDim: mix(.13, 24, 24, 28), head: mix(.92, 24, 24, 28), headDim: mix(.3, 24, 24, 28), ink: mix(.42, 255, 255, 255), inkDim: mix(.3, 90, 90, 98) };
+  CLIP_COLS.set(hex, o); return o;
+}
 function drawClip(cl, tr, x, y, w, h, sel) {
-  const c = cx, s = SRC.get(cl.src), dim = trackGain(tr) === 0 || !!cl.mute;
-  c.save(); rr(c, x, y, w, h, 6); c.fillStyle = hexA(tr.color, dim ? .18 : .5); c.fill(); c.clip();
-  c.fillStyle = hexA(tr.color, dim ? .3 : .85); c.fillRect(x, y, w, 15); // solid colour block with a stronger name strip
+  const c = cx, s = SRC.get(cl.src), dim = trackGain(tr) === 0 || !!cl.mute, K = clipCols(tr.color);
+  c.save(); rr(c, x, y, w, h, 6); c.fillStyle = dim ? K.bodyDim : K.body; c.fill(); c.clip();
+  c.fillStyle = dim ? K.headDim : K.head; c.fillRect(x, y, w, 15); // name strip in the full colour
+  if (!dim) { c.fillStyle = 'rgba(255,255,255,.3)'; c.fillRect(x, y, w, 1); } // a hairline of light on the top edge
   // MIDI: mini notes
   if (cl.notes && cl.notes.length) {
     const ps = cl.notes.map(n => n.p), lo = Math.min(...ps) - 1, hi = Math.max(...ps) + 1, bs = cbs(cl), rowH = Math.min(6, (h - 20) / Math.max(1, hi - lo));
-    c.fillStyle = dim ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.92)';
+    c.fillStyle = dim ? K.inkDim : K.ink;
     for (const n of cl.notes) {
       const nx = x + (n.t * bs - cl.offset) * UI.pps, nw = Math.max(1.5, n.d * bs * UI.pps - 1);
       if (nx + nw < x || nx > x + w) continue;
@@ -3694,10 +3793,10 @@ function drawClip(cl, tr, x, y, w, h, sel) {
     c.fillText(cl.text || '（空）', Math.max(x, 0) + 8, y + h / 2 + 4);
   }
   // waveform (lite mode: just a centre line, the per-pixel peak scan is the heaviest part of drawing the track list)
-  if (s && s.peaks && UI.lite) { c.fillStyle = dim ? 'rgba(255,255,255,.25)' : 'rgba(255,255,255,.55)'; c.fillRect(Math.max(x, 0), y + 15 + (h - 15) / 2 - 1, Math.min(w, W), 2); }
+  if (s && s.peaks && UI.lite) { c.fillStyle = dim ? K.inkDim : K.ink; c.fillRect(Math.max(x, 0), y + 15 + (h - 15) / 2 - 1, Math.min(w, W), 2); }
   else if (s && s.peaks) {
     const pk = s.peaks, sr = s.buf.sampleRate, mid = y + 15 + (h - 15) / 2, amp = (h - 19) / 2 * Math.min(2, db2g(cl.gain));
-    c.fillStyle = dim ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.88)';
+    c.fillStyle = dim ? K.inkDim : K.ink;
     const xa = Math.max(Math.floor(x), 0), xb = Math.min(Math.ceil(x + w), W);
     for (let px = xa; px < xb; px++) {
       const la = (px - x) / UI.pps, lb2 = (px + 1 - x) / UI.pps;
@@ -3734,7 +3833,7 @@ function drawClip(cl, tr, x, y, w, h, sel) {
     c.beginPath(); c.moveTo(lx + 1.2, ly2 + 5.6); c.lineTo(lx - 2.3, ly2 + 4.2); c.lineTo(lx + .5, ly2 + 1.8); c.stroke(); c.lineWidth = 1;
   }
   rr(c, x + .5, y + .5, w - 1, h - 1, 7);
-  c.strokeStyle = sel ? '#ffffff' : hexA(tr.color, .55); c.lineWidth = sel ? 2 : 1; c.stroke(); c.lineWidth = 1;
+  c.strokeStyle = sel ? '#ffffff' : hexA(tr.color, dim ? .3 : .75); c.lineWidth = sel ? 2 : 1; c.stroke(); c.lineWidth = 1;
 }
 
 /* ============ timeline interaction ============ */
@@ -4904,6 +5003,7 @@ function drawRoll() {
   c.notes.forEach((n, i) => {
     const nx = rX(n.t), ny = rY(n.p), nw = Math.max(3, n.d * R.ppb - 1); if (nx > RW || nx + nw < R.keyW || ny > vt || ny + R.rowH < R.rulerH) return;
     x.fillStyle = hexA(col, 0.45 + 0.55 * n.v); rr(x, nx, ny + 1, nw, R.rowH - 2, 3); x.fill();
+    if (R.rowH >= 9 && nw > 5) { x.fillStyle = 'rgba(255,255,255,.3)'; x.fillRect(nx + 2, ny + 1.5, nw - 4, 1); } // a hairline of light on each note
     if (R.sel.has(i)) { x.strokeStyle = '#fff'; x.lineWidth = 1.5; x.stroke(); x.lineWidth = 1; }
     else if (!drums && P.key !== 'none' && !inScale(n.p)) { x.strokeStyle = '#ff8f80'; x.lineWidth = 1.5; x.stroke(); x.lineWidth = 1; }
     if (R.rowH >= 11 && nw > 26) { x.fillStyle = 'rgba(10,14,28,.8)'; x.font = '600 9px ' + FONT_MONO; x.textBaseline = 'middle'; x.fillText(drums ? (GM_DRUMS[n.p] || noteName(n.p)) : noteNameKey(n.p), nx + 3, ny + R.rowH / 2 + .5); }
