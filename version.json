@@ -1,8 +1,8 @@
 {
- "build": 202611100617,
- "sha256": "551972e3e40a048d9a1e4a05542b8808065b56709a50e83610aebbeb8a8b139a",
+ "build": 202611100817,
+ "sha256": "87a7c138dd7f5dde5c0e315018d7c24aa71c5823ec8a40e6445539943a9ad036",
  "shell": 2,
- "note": "VoiSona連携: MusicXML書き出し、クリップなしVSTのバウンス、VoiSona用ボーカルプリセット",
+ "note": "VSTの場所が変わっても自動で見つけ直す（VoiSonaを正式にインストールしたとき用）",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
