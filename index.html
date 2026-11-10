@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611100617">
+<meta name="gd-build" content="202611100817">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -7961,13 +7961,29 @@ if (rtAvail()) window.desktop.onVstAudio(o => {
   catch (e) { s.node.port.postMessage({ t: 'out', f: o.f, L: o.L, R: o.R, ack: s.offline }); }
 });
 
+// the plug-in moved (e.g. VoiSona installed properly into Common Files\VST3 and the old copy removed):
+// find the same plug-in (same class id) elsewhere and point every track and effect that used the old file at it
+async function vstRelocate(p) {
+  if (!p || !p.cid) return false;
+  let it = (VST.list || []).find(x => x.cid === p.cid && x.path !== p.path);
+  if (!it) it = (await vstScan(true)).find(x => x.cid === p.cid && x.path !== p.path);
+  if (!it) return false;
+  const old = p.path, fix = q => { if (q && q.cid === p.cid && q.path === old) q.path = it.path; };
+  fix(p);
+  for (const t of P.tracks) { if (t.inst && t.inst.type === 'vst') fix(t.inst.p); for (const f of t.fx || []) if (f.type === 'vst') fix(f.p); }
+  for (const f of (P.master && P.master.fx) || []) if (f.type === 'vst') fix(f.p);
+  if (typeof autosaveSoon === 'function') autosaveSoon();
+  toast(`「${it.name}」の場所が変わっていたので、新しい場所（${it.path}）から読み込みました`, 5000);
+  return true;
+}
 // a plug-in instance in the helper, opened with the given settings (reopened when they change, e.g. after undo)
 async function vstEnsure(id, p) {
   const o = VST.open.get(id);
   if (o && o.cid === p.cid && o.state === (p.state || '')) return true;
   if (o) await vstCall({ op: 'close', id });
   RT.ready.delete(id);
-  const r = await vstCall({ op: 'open', id, path: p.path, cid: p.cid, state: p.state || '' });
+  let r = await vstCall({ op: 'open', id, path: p.path, cid: p.cid, state: p.state || '' });
+  if (!r.ok) { const q = await vstRelocate(p); if (q) r = await vstCall({ op: 'open', id, path: p.path, cid: p.cid, state: p.state || '' }); }
   if (!r.ok) { VST.errs.set(id, r.error); VST.open.delete(id); return false; }
   VST.errs.delete(id); VST.open.set(id, { cid: p.cid, state: p.state || '' }); return true;
 }
