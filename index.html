@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611100033">
+<meta name="gd-build" content="202611100114">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -3690,8 +3690,9 @@ function drawClip(cl, tr, x, y, w, h, sel) {
     c.fillStyle = cl.text ? 'rgba(243,246,255,.95)' : 'rgba(243,246,255,.35)'; c.font = '700 15px ' + FONT; c.textBaseline = 'middle';
     c.fillText(cl.text || '（空）', Math.max(x, 0) + 8, y + h / 2 + 4);
   }
-  // waveform
-  if (s && s.peaks) {
+  // waveform (lite mode: just a centre line, the per-pixel peak scan is the heaviest part of drawing the track list)
+  if (s && s.peaks && UI.lite) { c.fillStyle = dim ? 'rgba(255,255,255,.25)' : 'rgba(255,255,255,.55)'; c.fillRect(Math.max(x, 0), y + 15 + (h - 15) / 2 - 1, Math.min(w, W), 2); }
+  else if (s && s.peaks) {
     const pk = s.peaks, sr = s.buf.sampleRate, mid = y + 15 + (h - 15) / 2, amp = (h - 19) / 2 * Math.min(2, db2g(cl.gain));
     c.fillStyle = dim ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.88)';
     const xa = Math.max(Math.floor(x), 0), xb = Math.min(Math.ceil(x + w), W);
@@ -5773,6 +5774,9 @@ $('#rChords').onclick = () => {
     { head: '選んだコード（なければ全部）の形', items: [
       { l: '転回（いちばん下の音を上へ）', on: () => voicing('invUp') }, { l: '転回（いちばん上の音を下へ）', on: () => voicing('invDown') },
       { l: '広げる（オープンボイシング）', on: () => voicing('spread') }, { l: 'ベースを足す（1オクターブ下）', on: () => voicing('bass') }, { l: '上にルートを重ねる', on: () => voicing('top') }] },
+    { head: 'ばらし弾き（ストラム）', items: [
+      { l: '下から上へ少しずつずらす（1/64）', on: () => strumChords('up', 1 / 16) }, { l: '下から上へ大きくずらす（1/32）', on: () => strumChords('up', 1 / 8) },
+      { l: '上から下へずらす（1/64）', on: () => strumChords('down', 1 / 16) }] },
   ]);
 };
 
@@ -7149,6 +7153,7 @@ function glitchMenu(h, at) {
   if (c.notes) return popMenu(at, [{ head: 'グリッチ（MIDI）', items: [
     { l: 'ノートを1/16で刻む', on: () => stutterNotes(tr, c, 0.25) }, { l: 'ノートを1/32で刻む（ダダダッ）', on: () => stutterNotes(tr, c, 0.125) }, { l: 'ノートを3連符で刻む', on: () => stutterNotes(tr, c, 1 / 3) },
     { l: 'テープストップ（このトラックがクリップの終わりで止まる）', on: () => addTapeStop(tr, barAfter(c.start + c.len)) },
+    { l: 'リバースリバーブ（この音へ吸い込む・2拍）', on: () => reverseReverb(tr, c, 2) }, { l: 'リバースリバーブ（長め・1小節）', on: () => reverseReverb(tr, c, 4) },
     { l: 'テープストップ（曲全体がクリップの終わりで止まる）', on: () => addTapeStop('master', barAfter(c.start + c.len)) }] }]);
   popMenu(at, [{ head: 'グリッチ（オーディオ）', items: [
     { l: 'スタッター 1/8（頭を繰り返す）', on: () => stutterClip(tr, c, [[0.5, 1]]) },
@@ -7157,6 +7162,7 @@ function glitchMenu(h, at) {
     { l: 'ロール（だんだん細かく 1/8→1/16→1/32）', on: () => stutterClip(tr, c, [[0.5, 0.5], [0.25, 0.75], [0.125, 1]]) },
     c.ts ? { l: 'テープストップを外す', on: () => tapeStop(c, false) } : { l: 'テープストップ（最後でキュルルッと止まる）', on: () => tapeStop(c, true) },
     { l: 'テープストップ（曲全体がクリップの終わりで止まる）', on: () => addTapeStop('master', barAfter(c.start + c.len)) },
+    { l: 'リバースリバーブ（この音へ吸い込む・2拍）', on: () => reverseReverb(tr, c, 2) },
     { l: '逆再生', on: () => revSel() }] }]);
 }
 
@@ -9428,6 +9434,92 @@ FX.wider = { n: 'ワイダー（モノラルでも消えない広がり）', cat
     return { i, o, set(k, v) { S[k] = v; if (k === 'lc') { E.S(h1.frequency, v); E.S(h2.frequency, v); } else upd(); } };
   } };
 
+/* ============ more Future Bass tools: clipper, vowel filter, reverse reverb swell, chord strum ============ */
+
+/* ---------- clipper: shaves the peaks off drums or the whole mix so it gets louder without pumping ---------- */
+const clipCurves = new Map();
+function clipCurve(kind) {
+  if (clipCurves.has(kind)) return clipCurves.get(kind);
+  const n = 4097, c = new Float32Array(n), k = 0.75; // soft: linear up to 0.75, then a smooth knee into 1.0
+  for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1, a = Math.abs(x);
+    c[i] = kind === 'hard' ? x : Math.sign(x) * (a <= k ? a : k + (1 - k) * Math.tanh((a - k) / (1 - k))); }
+  clipCurves.set(kind, c); return c;
+}
+FX.clipper = { n: 'クリッパー（ピークを削って音圧アップ）', cat: 'ダイナミクス', p: [
+  n_('drive', '突っ込む量', 0, 18, 4, 'dB'), n_('ceil', '上限', -12, 0, -0.5, 'dB'),
+  s_('kind', '削り方', [['soft', 'ソフト（なめらか）'], ['hard', 'ハード（パキッと）']], 'soft'), s_('comp', '音量をそろえる', [['on', 'そろえる（比べやすい）'], ['off', 'そろえない']], 'off')],
+  make(ctx, E, p) {
+    const i = st(ctx), pre = gn(ctx), ws = ctx.createWaveShaper(), post = gn(ctx), s = { drive: 4, ceil: -0.5, kind: 'soft', comp: 'off', ...p };
+    ws.oversample = '4x'; chain(i, pre, ws, post);
+    const upd = () => { ws.curve = clipCurve(s.kind); const c = db2g(s.ceil); E.S(pre.gain, db2g(s.drive) / c); E.S(post.gain, c * (s.comp === 'on' ? db2g(-s.drive * 0.6) : 1)); };
+    return { i, o: post, set(k, v) { s[k] = v; upd(); } };
+  } };
+
+/* ---------- vowel filter: "a-i-u-e-o" formants, morphing between two vowels in time with the song ---------- */
+const VOWELS = { a: [[800, 1], [1150, 0.5], [2900, 0.1]], i: [[270, 1], [2140, 0.3], [2950, 0.15]], u: [[300, 1], [870, 0.3], [2240, 0.06]],
+  e: [[400, 1], [1700, 0.4], [2600, 0.12]], o: [[450, 1], [800, 0.45], [2830, 0.05]] };
+const VOWEL_O = [['a', 'ア'], ['i', 'イ'], ['u', 'ウ'], ['e', 'エ'], ['o', 'オ']];
+FX.vowel = { n: 'ボーカルフィルター（アイウエオ）', cat: 'EQ・フィルター', p: [
+  s_('va', '母音A', VOWEL_O, 'o'), s_('vb', '母音B', VOWEL_O, 'a'), n_('pos', 'A ↔ B', 0, 1, 0.5, '%'),
+  s_('sync', '動き', [['off', '止める'], ...SYNC], '1'), n_('dep', '動きの深さ', 0, 1, 1, '%'),
+  n_('shift', '声の高さ', 0.6, 1.6, 1, '×', true), n_('q', 'くっきり', 2, 20, 8, '', true), MIX(1)],
+  make(ctx, E, p) {
+    const dw = dryWet(ctx), s = { va: 'o', vb: 'a', pos: 0.5, sync: '1', dep: 1, shift: 1, q: 8, ...p };
+    const bank = () => { const g = gn(ctx, 0), fs = [0, 1, 2].map(() => { const f = bq(ctx, 'bandpass', 500, 8), fg = gn(ctx, 1); dw.i.connect(f); f.connect(fg); fg.connect(g); return [f, fg]; }); return { g, fs }; };
+    const A = bank(), B = bank(), mk = gn(ctx, 3.2); A.g.connect(mk); B.g.connect(mk); mk.connect(dw.w);
+    const la = gn(ctx, 0), lb = gn(ctx, 0); la.connect(A.g.gain); lb.connect(B.g.gain);
+    const lsrc = gn(ctx), L = makeLFO(ctx, E, lsrc); // lfo -> lsrc -> (la, lb)
+    lsrc.connect(la); lsrc.connect(lb);
+    const setBank = (b, v) => VOWELS[v].forEach(([f, g], k) => { E.S(b.fs[k][0].frequency, Math.min(f * s.shift, ctx.sampleRate / 2.2)); E.S(b.fs[k][0].Q, s.q * (k ? 1.4 : 1)); E.S(b.fs[k][1].gain, g); });
+    const upd = () => {
+      setBank(A, s.va); setBank(B, s.vb);
+      const pos = clamp(s.pos, 0, 1), moving = s.sync !== 'off', d = moving ? s.dep * Math.min(pos, 1 - pos) : 0;
+      E.S(A.g.gain, 1 - pos); E.S(B.g.gain, pos); E.S(la.gain, -d); E.S(lb.gain, d);
+      if (moving) L.set('sine', syncSec(s.sync, 1));
+    };
+    return { i: dw.i, o: dw.o, start: L.start, stop: L.stop,
+      set(k, v) { s[k] = v; if (k === 'mix') return dw.mix(E, v); upd(); } };
+  } };
+
+/* ---------- reverse reverb: the sound's own reverb, played backwards, swelling into the clip ---------- */
+async function reverseReverb(tr, c, beats = 2) {
+  ensureAC(); toast('リバースリバーブを作っています…', 2000);
+  const bs = beatSec(), sr = DEC_SR, len = Math.min(c.len, bs * 1.5);
+  if (c.start < bs * 0.5) { toast('クリップが曲の頭にあるので、前に吸い込みを置けません'); return; }
+  let dry; try { dry = await renderOffline({ from: c.start, to: c.start + len, tail: 0, toMaster: new Set([tr.id]), masterFx: false, sr }); }
+  catch (e) { toast('作れませんでした'); return; }
+  const tail = 4.5, oc = new OfflineAudioContext(2, Math.ceil((len + tail) * sr), sr), src = oc.createBufferSource(), cv = oc.createConvolver(), hp = oc.createBiquadFilter();
+  for (let ch = 0; ch < dry.numberOfChannels; ch++) dry.getChannelData(ch).reverse(); // reverse → reverb → reverse: the tail ends up in front, swelling into the sound
+  src.buffer = dry; cv.normalize = true; cv.buffer = genIR(sr, 'hall', 4, 7000); hp.type = 'highpass'; hp.frequency.value = 250;
+  src.connect(hp); hp.connect(cv); cv.connect(oc.destination); src.start(0);
+  const wet = await oc.startRendering(), pk = bufPeak(wet);
+  if (!(pk > 1e-4)) { toast('このクリップの頭に音がなかったので、作れませんでした'); return; }
+  const k = db2g(-4) / pk, N = wet.length;
+  for (let ch = 0; ch < 2; ch++) { const d = wet.getChannelData(ch); d.reverse(); for (let i = 0; i < N; i++) d[i] *= k; }
+  const s = await addSource(tr.name + ' のリバースリバーブ', await encodeWav(wet, 24).arrayBuffer());
+  const L = Math.min(beats * bs, c.start, tail); // the sound's first instant sits at tail seconds into the reversed result
+  act(() => {
+    const t = newTrack('リバースリバーブ（' + tr.name + '）'); t.vol = -6; t.color = tr.color;
+    t.clips.push({ id: uid(), src: s.id, name: 'リバースリバーブ', start: c.start - L, offset: tail - L, len: L, gain: 0, fi: Math.min(L * 0.3, bs), fo: 0, rev: false });
+    UI.selTrack = t.id;
+  });
+  toast(`「${tr.name}」に向かって吸い込むリバースリバーブを、クリップの直前に置きました`, 3500);
+}
+
+/* ---------- strum: spread each chord's notes a little in time, like a hand sweeping the strings ---------- */
+function strumChords(dir, step) {
+  const f = rollClip(); if (!f) return; const { c } = f, idx = R.sel.size ? [...R.sel] : c.notes.map((_, i) => i);
+  const groups = new Map(); for (const i of idx) { const k = Math.round(c.notes[i].t * 1e4); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c.notes[i]); }
+  let n = 0;
+  act(() => { for (const g of groups.values()) { if (g.length < 2) continue; g.sort((a, b) => dir === 'up' ? a.p - b.p : b.p - a.p);
+    g.forEach((x, k) => { const sh = k * step; if (sh >= x.d * 0.8) return; x.t += sh; x.d -= sh; }); n++; } }, { live: true });
+  R.dirty = true; toast(n ? `${n}個のコードをばらしました（元に戻すは Ctrl+Z）` : '同時に鳴っている和音が見つかりませんでした', 2500);
+}
+FX_PRESETS.push(
+  { n: 'Future Bass：しゃべるベース（ヨーヨー言う・グロウル）', fx: [['vowel', { va: 'u', vb: 'a', sync: '0.5', dep: 1, q: 9 }], ['mbdist', { ld: 0, md: 14, hd: 6 }], ['ott', { dep: 0.35 }]] },
+  { n: 'Future Bass：ドラムの音圧（クリッパー）', fx: [['clipper', { drive: 5, ceil: -1, kind: 'soft' }]] },
+  { n: 'Future Bass：広いコード（ワイダー＋OTT＋サイドチェイン）', fx: [['ott', { dep: 0.35 }], ['wider', { w: 160 }], ['ducker', { rate: '1', dep: 0.7, rel: 0.55 }]] });
+
 /* ============ freeze: play a heavy track from a pre-rendered copy, and keep the track editable ============
    The track's instrument + effects + automation (before its own fader) are rendered once in the background.
    While frozen, the engine sees a light stand-in: an audio track with that one buffer and no effects.
@@ -10009,7 +10101,7 @@ let fcount = 0;
 const FR_TXT = { b: '', t: '' }, PBAR = $('#pbar'), PTIME = $('#ptime');
 function setLite(on, quietly) {
   UI.lite = !!on; try { localStorage.setItem('gdaw:lite', on ? '1' : '0'); } catch (e) {}
-  $('#liteBtn').classList.toggle('on', UI.lite); document.body.classList.toggle('lite', UI.lite);
+  $('#liteBtn').classList.toggle('on', UI.lite); document.body.classList.toggle('lite', UI.lite); UI.dirty = true;
   layout(); if (R.open) rollLayout();
   if (!quietly) toast(UI.lite ? '軽量モード：オン（画面の更新を減らし、再生中だけシンセの重ね数（ユニゾン）を3までにして、音が途切れにくくします。書き出しはいつもの音のまま）' : '軽量モード：オフ', 5000);
 }

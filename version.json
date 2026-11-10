@@ -1,8 +1,8 @@
 {
- "build": 202611100033,
- "sha256": "fdd9b0014c4f0abf027ac2f2a97c18f6e8c40db2f5a8f2f8933a129dcd0035cb",
+ "build": 202611100114,
+ "sha256": "d796662e3b17ed9374c990bcca43f3af9644abf3e08dcf7a20304b86f786fa78",
  "shell": 2,
- "note": "ワイダー（モノラルでも消えない広がり）を追加",
+ "note": "軽量モードで波形を省略、クリッパー・ボーカルフィルター・リバースリバーブ・ストラムを追加",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
