@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611100359">
+<meta name="gd-build" content="202611100547">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1346,15 +1346,22 @@ function newTrack(name, type = 'audio') {
   return t;
 }
 // fill in fields added in later versions so older .gdaw files still open
+// the old simple OTT ('ott') was replaced by the real-OTT clone 'ottx': same depth / speed / band gains / output, crossovers are fixed
+function migrateFx(f) {
+  if (f.type !== 'ott') return;
+  const o = f.p || {}, q = {}; f.type = 'ottx';
+  for (const k of ['dep', 'time', 'out', 'lg', 'mg', 'hg']) if (o[k] != null) q[k] = o[k];
+  f.p = q;
+}
 function normalize(p) {
   p.master = p.master || { vol: 0, fx: [] }; p.master.fx = p.master.fx || [];
   p.markers = p.markers || []; p.key = p.key || 'D:minor'; if (p.ssnap == null) p.ssnap = true;
   for (const t of p.tracks) {
     t.type = t.type || 'audio'; t.fx = t.fx || []; t.sends = t.sends || {}; autoClean(t);
-    for (const f of [...t.fx]) if (FX[f.type]) f.p = Object.assign(fxDefaults(f.type), f.p);
+    for (const f of [...t.fx]) { migrateFx(f); if (FX[f.type]) f.p = Object.assign(fxDefaults(f.type), f.p); }
     if (t.type === 'midi') { t.inst = t.inst || newInst('synth', 'rhodes'); t.inst.p = Object.assign(instDefaults(t.inst.type, t.inst.p.preset), t.inst.p); t.arp = Object.assign({ ...ARP_DEF }, t.arp); if (t.inst.type === 'pads') { const d = padsDefaults(); t.inst.p.pads = d.map((x, i) => Object.assign(x, (t.inst.p.pads || [])[i] || {})); } }
   }
-  for (const f of p.master.fx) if (FX[f.type]) f.p = Object.assign(fxDefaults(f.type), f.p);
+  for (const f of p.master.fx) { migrateFx(f); if (FX[f.type]) f.p = Object.assign(fxDefaults(f.type), f.p); }
   return p;
 }
 function srcDur(id) { const s = SRC.get(id); return s && s.buf ? s.buf.duration : 0; }
@@ -1751,24 +1758,6 @@ const FX = {
     make(ctx, E) {
       const i = st(ctx), w = wkNode(ctx, 'gd-gate'); if (!w) return { i, o: i, set() {} };
       i.connect(w); return { i, o: w, set(k, v) { E.S(w.parameters.get(k), v); } };
-    } },
-  ott: { n: 'マルチバンドコンプ（OTT風）', cat: 'ダイナミクス', p: [
-    n_('dep', '深さ', 0, 1, 0.4, '%'), n_('time', '速さ', 0.2, 5, 1, '×', true), n_('lo', '低/中の境目', 40, 600, 120, 'Hz', true), n_('hi', '中/高の境目', 800, 10000, 2500, 'Hz', true),
-    n_('lg', '低域', -12, 12, 0, 'dB'), n_('mg', '中域', -12, 12, 0, 'dB'), n_('hg', '高域', -12, 12, 0, 'dB'), n_('out', '出力', -12, 12, 0, 'dB')],
-    make(ctx, E) {
-      const i = st(ctx), o = gn(ctx), outG = gn(ctx); outG.connect(o);
-      const lp1a = bq(ctx, 'lowpass', 120, .707), lp1b = bq(ctx, 'lowpass', 120, .707), hp1a = bq(ctx, 'highpass', 120, .707), hp1b = bq(ctx, 'highpass', 120, .707);
-      const lp2a = bq(ctx, 'lowpass', 2500, .707), lp2b = bq(ctx, 'lowpass', 2500, .707), hp2a = bq(ctx, 'highpass', 2500, .707), hp2b = bq(ctx, 'highpass', 2500, .707);
-      const bands = [chain(i, lp1a, lp1b), chain(i, hp1a, hp1b, lp2a, lp2b), (hp1b.connect(hp2a), chain(hp2a, hp2b))];
-      const B = bands.map(src => { const dry = gn(ctx), c = ctx.createDynamicsCompressor(), wet = gn(ctx), g = gn(ctx); c.threshold.value = -36; c.ratio.value = 8; c.knee.value = 8; src.connect(dry); chain(src, c, wet); dry.connect(g); wet.connect(g); g.connect(outG); return { dry, c, wet, g }; });
-      return { i, o, gr: () => Math.min(...B.map(b => b.c.reduction)), set(k, v) {
-        if (k === 'dep') B.forEach(b => { E.S(b.dry.gain, 1 - v); E.S(b.wet.gain, v); });
-        else if (k === 'time') B.forEach((b, j) => { E.S(b.c.attack, [0.008, 0.004, 0.002][j] * v); E.S(b.c.release, [0.2, 0.12, 0.08][j] * v); });
-        else if (k === 'lo') [lp1a, lp1b, hp1a, hp1b].forEach(f => E.S(f.frequency, v));
-        else if (k === 'hi') [lp2a, lp2b, hp2a, hp2b].forEach(f => E.S(f.frequency, v));
-        else if (k === 'lg' || k === 'mg' || k === 'hg') E.S(B[{ lg: 0, mg: 1, hg: 2 }[k]].g.gain, db2g(v));
-        else if (k === 'out') E.S(outG.gain, db2g(v));
-      } };
     } },
   deess: { n: 'ディエッサー', cat: 'ダイナミクス', p: [n_('f', '周波数', 2000, 12000, 6500, 'Hz', true), n_('th', 'スレッショルド', -60, 0, -28, 'dB'), n_('ra', '強さ', 2, 20, 8, ':1', true)],
     make(ctx, E) {
@@ -3252,7 +3241,7 @@ function fxCard(list, f, owner) {
   if (f.type === 'ducker') extra = duckGraph(f);
   if (f.type === 'tgate') extra = gateGraph(f);
   if (extra) c.appendChild(extra.el), extra.draw();
-  if (['comp', 'limiter', 'ott', 'deess'].includes(f.type)) { const g = el('div', 'gr', '<i></i><span>GR</span>'); g.title = 'ゲインリダクション（どれだけ音量を下げているか）'; c.appendChild(g); }
+  if (['comp', 'limiter', 'deess'].includes(f.type)) { const g = el('div', 'gr', '<i></i><span>GR</span>'); g.title = 'ゲインリダクション（どれだけ音量を下げているか）'; c.appendChild(g); }
   // the stomp-box part: big name plate, LED and a footswitch that turns the effect on and off
   const foot = el('div', 'pfoot', `<span class="led${f.on ? ' on' : ''}"></span><button class="fsw" title="踏むとオン／オフ"><i></i></button><span></span>`);
   foot.querySelector('.fsw').onclick = () => act(() => { f.on = !f.on; });
@@ -5585,10 +5574,10 @@ Object.assign(SYN_PRESETS, {
   fbnoise: ['ノイズ（ライザー・スイープ用）', { w1: 'sine', w2: 'sine', mix: 0, noise: 1, cut: 18000, res: 0.5, fenv: 0, att: 0.05, dec: 1, sus: 1, rel: 0.6, vs: 0, vol: -6 }],
 });
 FX_PRESETS.push(
-  { n: 'Future Bassのコード（OTT＋サイドチェイン＋広がり）', fx: [['ott', { dep: 0.5 }], ['ducker', { rate: '1', dep: 0.85, rel: 0.6 }], ['width', { w: 1.5 }], ['reverb', { mix: 0.18 }]] },
+  { n: 'Future Bassのコード（OTT＋サイドチェイン＋広がり）', fx: [['ottx', { dep: 0.5 }], ['ducker', { rate: '1', dep: 0.85, rel: 0.6 }], ['width', { w: 1.5 }], ['reverb', { mix: 0.18 }]] },
   { n: 'ボーカルチョップ（ディレイ＋リバーブ）', fx: [['eq', { lc: 180, hg: 3 }], ['delay', { mix: 0.22 }], ['reverb', { mix: 0.25 }]] },
   { n: 'トランスゲート（16分で刻む＋ディレイ）', fx: [['tgate', { pat: 'xx.xx.x.xx.xx.x.', len: 0.7 }], ['delay', { mix: 0.18 }]] },
-  { n: 'ワブル（フィルターが拍で揺れる）', fx: [['filter', { type: 'lowpass', f: 700, q: 4, lfo: '0.5', dep: 2.5 }], ['ott', { dep: 0.4 }]] },
+  { n: 'ワブル（フィルターが拍で揺れる）', fx: [['filter', { type: 'lowpass', f: 700, q: 4, lfo: '0.5', dep: 2.5 }], ['ottx', { dep: 0.4 }]] },
   { n: 'Future Bassのサブベース（サイドチェイン）', fx: [['ducker', { rate: '1', dep: 0.9, rel: 0.5 }], ['sat', { drive: 3, mix: 0.3 }]] },
 );
 
@@ -6463,7 +6452,7 @@ function addReleaseCutPiano() {
   toast('リリースカットピアノを置きました。「楽器」の「余韻の長さ」で切れ具合、ピアノロールで音の長さを変えられます', 5000);
   return t;
 }
-FX_PRESETS.push({ n: 'リリースカットピアノ（明るく・はねる）', fx: [['eq', { lc: 140, hg: 3 }], ['comp', { th: -18, ra: 3, at: 5, re: 80 }], ['ott', { dep: 0.3 }], ['reverb', { mix: 0.12, dec: 0.9 }]] });
+FX_PRESETS.push({ n: 'リリースカットピアノ（明るく・はねる）', fx: [['eq', { lc: 140, hg: 3 }], ['comp', { th: -18, ra: 3, at: 5, re: 80 }], ['ottx', { dep: 0.3 }], ['reverb', { mix: 0.12, dec: 0.9 }]] });
 
 /* ============ vocal pitch correction (auto-tune style): pull each sung note to the song's scale ============ */
 // c.tune = { amt: 0..1 how far to pull, spd: ms to reach the note (0 = hard, robotic), key: optional 'D:minor' }
@@ -7075,8 +7064,8 @@ FX.mbdist = { n: 'マルチバンドの歪み', cat: '歪み・質感', p: [
     } };
   } };
 FX_PRESETS.push(
-  { n: 'Future Bass：キラキラのコード（シマー＋サイドチェイン）', fx: [['ott', { dep: 0.35 }], ['shimmer', { mix: 0.25, amt: 0.5 }], ['ducker', { rate: '1', dep: 0.7, rel: 0.55 }]] },
-  { n: 'Future Bass：太いベース（低域はきれいに、中域を歪ませる）', fx: [['mbdist', { ld: 0, md: 16, hd: 8 }], ['ott', { dep: 0.4 }]] },
+  { n: 'Future Bass：キラキラのコード（シマー＋サイドチェイン）', fx: [['ottx', { dep: 0.35 }], ['shimmer', { mix: 0.25, amt: 0.5 }], ['ducker', { rate: '1', dep: 0.7, rel: 0.55 }]] },
+  { n: 'Future Bass：太いベース（低域はきれいに、中域を歪ませる）', fx: [['mbdist', { ld: 0, md: 16, hd: 8 }], ['ottx', { dep: 0.4 }]] },
   { n: 'Future Bass：オクターブ上を重ねる', fx: [['pitch', { semi: '12', mix: 0.3 }]] });
 
 /* ---------- formant shift (audio clips): the voice's character moves, the pitch stays ---------- */
@@ -9678,9 +9667,9 @@ function strumChords(dir, step) {
   R.dirty = true; toast(n ? `${n}個のコードをばらしました（元に戻すは Ctrl+Z）` : '同時に鳴っている和音が見つかりませんでした', 2500);
 }
 FX_PRESETS.push(
-  { n: 'Future Bass：しゃべるベース（ヨーヨー言う・グロウル）', fx: [['vowel', { va: 'u', vb: 'a', sync: '0.5', dep: 1, q: 9 }], ['mbdist', { ld: 0, md: 14, hd: 6 }], ['ott', { dep: 0.35 }]] },
+  { n: 'Future Bass：しゃべるベース（ヨーヨー言う・グロウル）', fx: [['vowel', { va: 'u', vb: 'a', sync: '0.5', dep: 1, q: 9 }], ['mbdist', { ld: 0, md: 14, hd: 6 }], ['ottx', { dep: 0.35 }]] },
   { n: 'Future Bass：ドラムの音圧（クリッパー）', fx: [['clipper', { drive: 5, ceil: -1, kind: 'soft' }]] },
-  { n: 'Future Bass：広いコード（ワイダー＋OTT＋サイドチェイン）', fx: [['ott', { dep: 0.35 }], ['wider', { w: 160 }], ['ducker', { rate: '1', dep: 0.7, rel: 0.55 }]] });
+  { n: 'Future Bass：広いコード（ワイダー＋OTT＋サイドチェイン）', fx: [['ottx', { dep: 0.35 }], ['wider', { w: 160 }], ['ducker', { rate: '1', dep: 0.7, rel: 0.55 }]] });
 
 /* ============ vocal chops, part 2: chops tuned to the song's key, and chops straight from the sample browser ============ */
 // each chop's pitch is measured (YIN); a clearly pitched chop gets its pad tuned to the nearest note of the song's scale
