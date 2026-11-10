@@ -1,8 +1,8 @@
 {
- "build": 202611100017,
- "sha256": "8dc08d36d1d78b80c878bda496b2d4d7859e309b2e9e9a7a78bcc5006d3c05c4",
+ "build": 202611100033,
+ "sha256": "fdd9b0014c4f0abf027ac2f2a97c18f6e8c40db2f5a8f2f8933a129dcd0035cb",
  "shell": 2,
- "note": "テープストップ（トラック・曲全体）を追加",
+ "note": "ワイダー（モノラルでも消えない広がり）を追加",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",

@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611100017">
+<meta name="gd-build" content="202611100033">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -9402,6 +9402,31 @@ function addTapeStop(where, bar, len = '2') {
   toast((where === 'master' ? '曲全体が' : 'このトラックが') + ` ${bar}小節目の頭でキュルルッと止まります。長さや位置はエフェクトのテープストップで変えられます`, 4500);
 }
 const barAfter = t => { let n = 1; while (secAtBar(n) < t - 0.02 && n < 999) n++; return n + 1; }; // UI bar number of the bar line at/after t
+
+/* ============ wider: stereo width that survives mono ============
+   Like the well-known one-knob wideners: a decorrelated copy of the middle (delay + allpass diffusion) is added to
+   the left and subtracted from the right. Summed to mono the two cancel exactly, so nothing gets thinner or vanishes
+   on a phone speaker. Below 100% it narrows the existing sides instead. The lows stay centred. */
+FX.wider = { n: 'ワイダー（モノラルでも消えない広がり）', cat: '空間', p: [
+  n_('w', '広がり', 0, 200, 150, '%', false, 1),
+  n_('lc', 'ここより下はセンター', 40, 800, 180, 'Hz', true),
+  s_('ch', '広がりの質感', [['tight', 'タイト（はっきり）'], ['mid', 'ふつう'], ['airy', 'ふんわり（大きく広がる）']], 'mid')],
+  make(ctx, E, p) {
+    const i = st(ctx), sp = ctx.createChannelSplitter(2), mg = ctx.createChannelMerger(2), o = gn(ctx);
+    const m = mono(ctx), s = mono(ctx), lm = gn(ctx, 0.5), rm = gn(ctx, 0.5), ls = gn(ctx, 0.5), rs = gn(ctx, -0.5);
+    i.connect(sp); sp.connect(lm, 0); sp.connect(rm, 1); sp.connect(ls, 0); sp.connect(rs, 1);
+    lm.connect(m); rm.connect(m); ls.connect(s); rs.connect(s);                        // M = (L+R)/2, S = (L-R)/2
+    const sg = gn(ctx, 1), sOut = mono(ctx); s.connect(sg); sg.connect(sOut);            // the existing sides, scaled
+    const h1 = bq(ctx, 'highpass', 180, 0.707), h2 = bq(ctx, 'highpass', 180, 0.707), dl = ctx.createDelay(0.05);
+    const aps = [430, 1270, 2900, 6100].map(f => bq(ctx, 'allpass', f, 0.6)), dg = gn(ctx, 0);
+    chain(m, h1, h2, dl, ...aps, dg, sOut);                                               // + the decorrelated middle
+    const neg = gn(ctx, -1); sOut.connect(neg);
+    m.connect(mg, 0, 0); m.connect(mg, 0, 1); sOut.connect(mg, 0, 0); neg.connect(mg, 0, 1); mg.connect(o);   // L = M + S', R = M - S'
+    const cfg = { tight: [0.0045, 0.75], mid: [0.0085, 0.9], airy: [0.015, 1.05] }, S = { w: 150, ch: 'mid', ...p };
+    const upd = () => { const w = S.w / 100, c = cfg[S.ch] || cfg.mid;
+      E.S(sg.gain, Math.min(1, w)); E.S(dg.gain, Math.max(0, w - 1) * c[1]); E.S(dl.delayTime, c[0]); };
+    return { i, o, set(k, v) { S[k] = v; if (k === 'lc') { E.S(h1.frequency, v); E.S(h2.frequency, v); } else upd(); } };
+  } };
 
 /* ============ freeze: play a heavy track from a pre-rendered copy, and keep the track editable ============
    The track's instrument + effects + automation (before its own fader) are rendered once in the background.
