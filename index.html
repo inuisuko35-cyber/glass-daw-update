@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611100953">
+<meta name="gd-build" content="202611100956">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -5095,6 +5095,8 @@ function rollTool(kind) {
     if (kind === 'strum') { const g = new Map(); for (const n of ns) { const k = Math.round(n.t / 0.01); (g.get(k) || g.set(k, []).get(k)).push(n); } for (const arr of g.values()) arr.sort((a, b) => a.p - b.p).forEach((n, i) => { n.t += i * 0.04; n.d = Math.max(0.05, n.d - i * 0.04); }); }
     if (kind === 'half') for (const n of ns) n.d = Math.max(0.02, n.d / 2);
     if (kind === 'double') for (const n of ns) n.d *= 2;
+    // length and position together (double time / half time): scaled from the first chosen note, which stays where it is
+    if (kind === 'tfast' || kind === 'tslow') { const k = kind === 'tfast' ? .5 : 2, t0 = Math.min(...ns.map(n => n.t)); for (const n of ns) { n.t = t0 + (n.t - t0) * k; n.d = Math.max(0.02, n.d * k); } }
     fitClip(c);
   }, { live: true });
   R.dirty = true;
@@ -5266,6 +5268,7 @@ $('#rTools').onclick = () => popMenu($('#rTools'), [{ head: '選んだ音（な�
   { l: 'レガート（次の音までのばす）', on: () => rollTool('legato') }, { l: 'ストラム（和音をギターみたいにずらす）', on: () => rollTool('strum') },
   { l: '強さを少しばらつかせる（人間っぽく）', on: () => rollTool('human') }, { l: '強さをそろえる', on: () => rollTool('even') },
   { l: '長さを半分に', on: () => rollTool('half') }, { l: '長さを2倍に', on: () => rollTool('double') },
+  { l: '長さと位置を半分に（倍の速さ）', on: () => rollTool('tfast') }, { l: '長さと位置を2倍に（半分の速さ）', on: () => rollTool('tslow') },
   { l: '1オクターブ上げる', on: () => rollTool('up') }, { l: '1オクターブ下げる', on: () => rollTool('down') },
   { l: 'クオンタイズ', k: 'Q', on: () => quantize() }, { l: 'キー外の音を直す', on: () => $('#rFixKey').click() }] },
   { head: 'このクリップを', items: [{ l: 'MIDIファイルで保存', on: () => $('#rMidi').click() }] }]);
