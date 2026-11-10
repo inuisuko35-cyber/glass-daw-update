@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611100547">
+<meta name="gd-build" content="202611100617">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -9130,24 +9130,25 @@ function openVocalExport() {
   m.innerHTML = `<div class="card glass"><h2>歌声合成用に書き出す</h2><p class="note">メロの音符に歌詞を1文字（1音）ずつ割り当てて書き出します。歌詞トラックの文字は、ひらがな・カタカナは1文字ずつ（ゃゅょは前とくっつく）、英語はスペースで、「/」で区切ると区切りごとに1音になります。歌詞が足りない音符は「伸ばし」になります。</p><div class="sels"></div><p class="note vprev"></p><div class="acts"><button class="no">やめる</button><button class="pri ok">書き出す</button></div></div>`;
   document.body.appendChild(m);
   const sel = mids.find(t => t.id === UI.selTrack) || mids[0];
-  const s = { mel: sel.id, ly: lys[0] ? lys[0].id : '', fmt: 'mid', cs: 'utf8' };
+  const s = { mel: sel.id, ly: lys[0] ? lys[0].id : '', fmt: 'xml', cs: 'utf8' };
   const box = m.querySelector('.sels'), pv = m.querySelector('.vprev');
-  const prev = () => { const line = vocalLine(P.tracks.find(t => t.id === s.mel), P.tracks.find(t => t.id === s.ly), s.fmt === 'ust' ? 'ー' : '-'); pv.textContent = line.length + '音： ' + line.slice(0, 24).map(n => n.ly).join(' ') + (line.length > 24 ? ' …' : ''); };
+  const prev = () => { const line = vocalLine(P.tracks.find(t => t.id === s.mel), P.tracks.find(t => t.id === s.ly), s.fmt === 'mid' ? '-' : 'ー'); pv.textContent = line.length + '音： ' + line.slice(0, 24).map(n => n.ly).join(' ') + (line.length > 24 ? ' …' : ''); };
   box.append(
     selectCtl('メロのトラック', mids.map(t => [t.id, t.name]), s.mel, v => { s.mel = v; prev(); }),
     selectCtl('歌詞のトラック', [['', 'なし（全部「ら」）'], ...lys.map(t => [t.id, t.name])], s.ly, v => { s.ly = v; prev(); }),
-    selectCtl('形式', [['mid', 'MIDI（歌詞つき）'], ['ust', 'UST（UTAU・OpenUtau）']], s.fmt, v => { s.fmt = v; prev(); }),
+    selectCtl('形式', [['xml', 'MusicXML（VoiSona・NEUTRINO・Synthesizer V）'], ['mid', 'MIDI（歌詞つき）'], ['ust', 'UST（UTAU・OpenUtau）']], s.fmt, v => { s.fmt = v; prev(); }),
     selectCtl('文字コード', [['utf8', 'UTF-8（Synthesizer V・OpenUtau）'], ['sjis', 'Shift_JIS（UTAU・古いソフト）']], s.cs, v => { s.cs = v; }));
   prev();
   const close = () => m.remove();
   m.querySelector('.no').onclick = close; m.addEventListener('pointerdown', e => { if (e.target === m) close(); });
   m.querySelector('.ok').onclick = async () => {
-    const mel = P.tracks.find(t => t.id === s.mel), line = vocalLine(mel, P.tracks.find(t => t.id === s.ly), s.fmt === 'ust' ? 'ー' : '-'), sj = s.cs === 'sjis';
+    const mel = P.tracks.find(t => t.id === s.mel), line = vocalLine(mel, P.tracks.find(t => t.id === s.ly), s.fmt === 'mid' ? '-' : 'ー'), sj = s.cs === 'sjis' && s.fmt !== 'xml';
     if (!line.length) { toast('メロのトラックに音符がありません'); return; }
     const base = safeName(($('#pname').value || '曲') + ' ' + mel.name);
-    const bytes = s.fmt === 'ust' ? vocalUst(line, mel.name, sj) : vocalMidi(line, mel.name, sj);
+    const F = { ust: ['text/plain', '.ust', 'UST'], mid: ['audio/midi', '.mid', 'MIDI'], xml: ['application/vnd.recordare.musicxml+xml', '.musicxml', 'MusicXML'] }[s.fmt];
+    const bytes = s.fmt === 'ust' ? vocalUst(line, mel.name, sj) : s.fmt === 'xml' ? new TextEncoder().encode(vocalXml(line, mel.name)) : vocalMidi(line, mel.name, sj);
     close();
-    const r = await saveOut(new Blob([bytes], { type: s.fmt === 'ust' ? 'text/plain' : 'audio/midi' }), base + (s.fmt === 'ust' ? '.ust' : '.mid'), s.fmt, s.fmt === 'ust' ? 'UST' : 'MIDI');
+    const r = await saveOut(new Blob([bytes], { type: F[0] }), base + F[1], F[1].slice(1), F[2]);
     if (r) toast(line.length + '音を書き出しました。歌声合成ソフトで読み込んでね', 4000);
   };
 }
@@ -10084,6 +10085,89 @@ async function askKitRoot() {
   }
 }; }
 
+/* ============ singing synths that live in a VST (VoiSona and the like) ============ */
+// 1. MusicXML for the vocal export (VoiSona, NEUTRINO and Synthesizer V read lyrics from it)
+// 2. bouncing a VST track that has no MIDI clips (VoiSona keeps its notes in its own editor): the whole song is rendered
+// 3. vocal effect presets
+
+/* ---------- 1. MusicXML: one part, 4/x bars, notes split at bar lines with ties, lyric on the first piece ---------- */
+function vocalXml(line, name) {
+  const D = 480, M = Math.max(1, P.num) * D, q = v => Math.round(v * D / 30) * 30;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const evs = []; let pos = 0;
+  for (const n of line) {
+    let a = Math.max(q(n.t), pos); const b = Math.max(a + 30, q(n.t + n.d)); if (b <= a) continue;
+    if (a > pos) evs.push({ a: pos, b: a }); evs.push({ a, b, n }); pos = b;
+  }
+  const end = Math.max(M, Math.ceil(pos / M) * M); if (pos < end) evs.push({ a: pos, b: end });
+  const bars = Array.from({ length: end / M }, () => []);
+  for (const e of evs) for (let s = e.a; s < e.b;) { const m = Math.floor(s / M), t = Math.min(e.b, (m + 1) * M); bars[m].push({ d: t - s, n: e.n, first: s === e.a, last: t === e.b }); s = t; }
+  const TYPES = { 1920: 'whole', 960: 'half', 480: 'quarter', 240: 'eighth', 120: '16th', 60: '32nd', 30: '64th' };
+  const type = d => TYPES[d] ? `<type>${TYPES[d]}</type>` : TYPES[d / 1.5] ? `<type>${TYPES[d / 1.5]}</type><dot/>` : '';
+  const STEP = [['C', 0], ['C', 1], ['D', 0], ['D', 1], ['E', 0], ['F', 0], ['F', 1], ['G', 0], ['G', 1], ['A', 0], ['A', 1], ['B', 0]];
+  const out = ['<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">',
+    '<score-partwise version="3.1">', `<work><work-title>${esc(name)}</work-title></work>`,
+    `<part-list><score-part id="P1"><part-name>${esc(name)}</part-name></score-part></part-list>`, '<part id="P1">'];
+  bars.forEach((bar, k) => {
+    out.push(`<measure number="${k + 1}">`);
+    if (k === 0) out.push(`<attributes><divisions>${D}</divisions><key><fifths>0</fifths></key><time><beats>${P.num}</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>`,
+      `<direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${+P.bpm.toFixed(2)}</per-minute></metronome></direction-type><sound tempo="${+P.bpm.toFixed(2)}"/></direction>`);
+    for (const x of bar) {
+      if (!x.n) { out.push(`<note><rest/><duration>${x.d}</duration><voice>1</voice>${type(x.d)}</note>`); continue; }
+      const [st, al] = STEP[x.n.p % 12], oct = Math.floor(x.n.p / 12) - 1;
+      const ties = (x.first ? '' : '<tie type="stop"/>') + (x.last ? '' : '<tie type="start"/>');
+      const tied = (x.first ? '' : '<tied type="stop"/>') + (x.last ? '' : '<tied type="start"/>');
+      out.push(`<note><pitch><step>${st}</step>${al ? '<alter>1</alter>' : ''}<octave>${oct}</octave></pitch><duration>${x.d}</duration>${ties}<voice>1</voice>${type(x.d)}${al ? '<accidental>sharp</accidental>' : ''}` +
+        (tied ? `<notations>${tied}</notations>` : '') + (x.first ? `<lyric number="1"><syllabic>single</syllabic><text>${esc(x.n.ly)}</text></lyric>` : '') + '</note>');
+    }
+    out.push('</measure>');
+  });
+  out.push('</part>', '</score-partwise>');
+  return out.join('\n') + '\n';
+}
+
+/* ---------- 2. bounce a VST instrument that plays on its own (no clips): render the song ---------- */
+function songEndSec() {
+  let e = 0; for (const t of P.tracks) for (const c of t.clips) if (!c.mute) e = Math.max(e, c.start + c.len);
+  for (const m of P.markers || []) e = Math.max(e, m.t || 0);
+  return Math.max(e + barSec() * 2, barSec() * 8);
+}
+{ const _bt = bounceTrack; bounceTrack = async function (tr) {
+  if (tr.clips.some(c => !c.mute) || !(tr.type === 'midi' && vstHasPlug(tr) && rtOn(tr))) return _bt(tr);
+  ensureAC(); const br = barSec(), to = songEndSec(), tail = 3;
+  toast(`「${tr.inst.p.name}」の音を曲の頭から最後まで固めています…`, 120000);
+  const keep = { vol: tr.vol, pan: tr.pan, mute: tr.mute, solo: tr.solo, av: tr.auto && tr.auto.vol, ap: tr.auto && tr.auto.pan };
+  let buf;
+  try {
+    tr.vol = 0; tr.pan = 0; tr.mute = false; tr.solo = false; if (tr.auto) { delete tr.auto.vol; delete tr.auto.pan; }
+    buf = await renderOffline({ from: 0, to, tail, mix: false, toMaster: new Set([tr.id]), masterFx: false, sr: ac.sampleRate });
+  } finally {
+    Object.assign(tr, { vol: keep.vol, pan: keep.pan, mute: keep.mute, solo: keep.solo }); if (keep.av) tr.auto.vol = keep.av; if (keep.ap) tr.auto.pan = keep.ap;
+  }
+  // where the sound is: from the bar it starts in, to just after it stops
+  const th = db2g(-70), N = buf.length, chs = [...Array(buf.numberOfChannels).keys()].map(k => buf.getChannelData(k));
+  let a = 0, b = N; while (a < N && !chs.some(d => Math.abs(d[a]) > th)) a++; while (b > a && !chs.some(d => Math.abs(d[b - 1]) > th)) b--;
+  if (a >= b) { toast('音が出ていませんでした。プラグインの画面で歌（音符）が入っているか確かめてね', 6000); return; }
+  const start = Math.floor(a / buf.sampleRate / br + 1e-6) * br, len = Math.max(br, b / buf.sampleRate + 0.05 - start);
+  const s = await addSource(tr.name + '（固めた音）', await encodeWav(buf, 24).arrayBuffer());
+  act(() => {
+    const t = newTrack(tr.name + '（オーディオ）'); P.tracks.splice(P.tracks.indexOf(t), 1); P.tracks.splice(P.tracks.indexOf(tr) + 1, 0, t);
+    Object.assign(t, { vol: tr.vol, pan: tr.pan, color: tr.color, sends: { ...(tr.sends || {}) } }); if (tr.out) t.out = tr.out;
+    if (keep.av || keep.ap) { t.auto = {}; if (keep.av) t.auto.vol = keep.av.map(p => ({ ...p })); if (keep.ap) t.auto.pan = keep.ap.map(p => ({ ...p })); }
+    t.clips.push({ id: uid(), src: s.id, name: tr.name, start, offset: start, len, gain: 0, fi: 0, fo: 0, rev: false });
+    tr.mute = true; UI.selTrack = t.id;
+  });
+  toast(`「${tr.name}」をオーディオにしました。チョップやピッチ変更ができます。元のトラックはミュートして残してあります`, 6000);
+}; }
+
+/* ---------- 3. vocal chains ---------- */
+FX_PRESETS.push(
+  { n: 'VoiSona：歌ものボーカル（明るく前に・Future Bass向け）', fx: [['eq', { lc: 120, mf: 400, mg: -2, hf: 10000, hg: 3 }], ['deess', { f: 7000, th: -26, ra: 6 }], ['comp', { th: -20, ra: 3, at: 5, re: 80, mk: 3 }], ['air', { amt: 0.3 }], ['delay', { sync: '0.75', fb: 0.25, mix: 0.12 }], ['reverb', { type: 'plate', dec: 1.6, mix: 0.15 }]] },
+  { n: 'VoiSona：近くでささやく声（チル）', fx: [['eq', { lc: 150, hg: 2 }], ['deess', { f: 6500, th: -28, ra: 6 }], ['comp', { th: -24, ra: 2.5, at: 8, re: 120, mk: 3 }], ['reverb', { type: 'room', dec: 0.9, mix: 0.12 }]] },
+  { n: 'VoiSona：サビで広げる（ダブラー＋ホール）', fx: [['eq', { lc: 150, hf: 10000, hg: 2 }], ['deess', { f: 7000, th: -26, ra: 6 }], ['comp', { th: -20, ra: 3, at: 5, re: 80, mk: 3 }], ['doubler', { mix: 0.4 }], ['reverb', { type: 'hall', dec: 2.6, mix: 0.22 }]] },
+  { n: 'VoiSona：ボーカルチョップ用（固めた音に）', fx: [['eq', { lc: 200, hg: 4 }], ['ottx', { dep: 0.25 }], ['delay', { sync: '0.5', mix: 0.2 }], ['reverb', { mix: 0.25 }]] });
+
 /* ============ top bar wiring ============ */
 $('#play').onclick = togglePlay;
 $('#kbBtn').onclick = () => { setKb(!KB.on); $('#kbBtn').blur(); };
@@ -10135,7 +10219,7 @@ $('#zOut').onclick = () => zoomTo(UI.pps / 1.4, xT(W / 2), W / 2);
 $('#fileBtn').onclick = e => { const r = e.currentTarget.getBoundingClientRect(); popMenu({ x: r.left, y: r.bottom + 4 }, [{ items: [
   { l: '新しい曲', on: () => $('#newBtn').click() }, { l: '開く…', k: 'Ctrl+O', on: () => openProjectDialog() }, { l: '保存', k: 'Ctrl+S', on: () => saveProject() }, { l: '名前を付けて保存…', k: 'Ctrl+Shift+S', on: () => saveProject(true) }] },
   { items: [{ l: '新しい曲（テンプレートから）…', on: () => templateMenu({ x: r.left, y: r.bottom + 4 }) }, { l: '今の曲をテンプレートとして保存…', on: () => saveTemplate() }] },
-  { items: [{ l: '書き出し（WAV・MP3・MIDIなど）…', k: 'Ctrl+E', on: () => openExport() }, { l: '歌声合成用に書き出す（歌詞つきMIDI・UST）…', on: () => openVocalExport() }, { l: 'オーディオ・MIDIファイルを読み込む…', on: () => { ensureAC(); $('#fileWav').click(); } }] },
+  { items: [{ l: '書き出し（WAV・MP3・MIDIなど）…', k: 'Ctrl+E', on: () => openExport() }, { l: '歌声合成用に書き出す（VoiSona用MusicXML・MIDI・UST）…', on: () => openVocalExport() }, { l: 'オーディオ・MIDIファイルを読み込む…', on: () => { ensureAC(); $('#fileWav').click(); } }] },
   { items: [{ l: 'バックアップの履歴（前の状態に戻す）…', on: () => openHistory() }, { l: 'オーディオ設定（マイク・出力・遅れ）…', on: () => openAudioSettings() }, ...(window.desktop && window.desktop.update ? [{ l: 'アップデートを確認', on: () => appUpdate(true) }] : [])] }]); };
 // key in the top bar (BandLab shows the song key next to the tempo)
 (() => {

@@ -1,8 +1,8 @@
 {
- "build": 202611100547,
- "sha256": "fa3e44ae03bd9b35999e357fa436c3d9562ce1356b0b3583ff3f6a2656fc4678",
+ "build": 202611100617,
+ "sha256": "551972e3e40a048d9a1e4a05542b8808065b56709a50e83610aebbeb8a8b139a",
  "shell": 2,
- "note": "簡易OTTを外して本物のOTT（アップ＋ダウン）に一本化",
+ "note": "VoiSona連携: MusicXML書き出し、クリップなしVSTのバウンス、VoiSona用ボーカルプリセット",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
