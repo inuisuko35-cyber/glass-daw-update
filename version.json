@@ -1,8 +1,8 @@
 {
- "build": 202611100131,
- "sha256": "71b8b21beeb0bce469efcfcece20816caa4be36245d03f968c7f8ff072c84551",
+ "build": 202611100212,
+ "sha256": "3ba3363d600e9a185c4b5fa041dbe3ca59f123806d7897b0fb473269c6dddcbe",
  "shell": 2,
- "note": "曲の構成パネル、キーにそろうチョップ、高速シンセエンジン（WASM）",
+ "note": "軽くする処理：FM系の鍵盤やノイズもWASMシンセに、軽量モードの再生中はリバーブとフェイザーを軽い方式に",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
