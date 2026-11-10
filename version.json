@@ -1,8 +1,8 @@
 {
- "build": 202611100212,
- "sha256": "3ba3363d600e9a185c4b5fa041dbe3ca59f123806d7897b0fb473269c6dddcbe",
+ "build": 202611100314,
+ "sha256": "695fc377fb37bc045e59c49ef2cefdcc53560e64b0754f8a6dc312c77fec3370",
  "shell": 2,
- "note": "軽くする処理：FM系の鍵盤やノイズもWASMシンセに、軽量モードの再生中はリバーブとフェイザーを軽い方式に",
+ "note": "音源追加：Black Octopus Techno & Tech と Vocal Philosophy 2 を音源ブラウザに",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
