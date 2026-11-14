@@ -1,8 +1,8 @@
 {
- "build": 202611141302,
- "sha256": "eeaa7878e5980e717ef483de3b2436a9005e543bd41339127053485a4566e9c9",
+ "build": 202611141333,
+ "sha256": "22b0562cfe1d0fe429ce0cb854337ea868f98da974f62f61b948bfc002b54fed",
  "shell": 2,
- "note": "ブラス音源（CC0の生録音：トランペット・トロンボーン・ホルン、シティポップ用スタブ）を追加",
+ "note": "80sポップドラム（ゲートスネア・タム・シティポップのビート）を追加。音は追加zipで入れます",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
