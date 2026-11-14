@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611101002">
+<meta name="gd-build" content="202611141302">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2997,7 +2997,7 @@ function trackSub(tr) {
   const g = groupOf(tr), pre = g ? '→' + g.name + '　' : '';
   if (tr.type === 'audio') return pre + 'オーディオ'; if (tr.type === 'bus') return tr.grp ? 'グループ（' + P.tracks.filter(t => t.out === tr.id).length + 'トラック）' : 'リターン';
   const I = tr.inst; if (!I) return pre; const p = I.p || {};
-  if (I.type === 'rec') return pre + (p.lib === 'piano' ? 'グランドピアノ' : p.lib === 'kit' ? 'ドラムキット' : (p.font === 'gx' && typeof GX_LIST !== 'undefined' ? (GX_LIST.find(x => x[0] === Number(p.prog)) || [0, '追加音源'])[1] : p.font && p.font.startsWith('u:') ? p.font.slice(2) : (GM_NAMES[p.prog] || '楽器')));
+  if (I.type === 'rec') return pre + (p.lib === 'piano' ? 'グランドピアノ' : p.lib === 'kit' ? 'ドラムキット' : (p.font === 'gx' && typeof GX_LIST !== 'undefined' ? (GX_LIST.find(x => x[0] === Number(p.prog)) || [0, '追加音源'])[1] : p.font === 'gb' && typeof GB_LIST !== 'undefined' ? (GB_LIST.find(x => x[0] === Number(p.prog)) || [0, 'ブラス'])[1] : p.font && p.font.startsWith('u:') ? p.font.slice(2) : (GM_NAMES[p.prog] || '楽器')));
   if (I.type === 'synth') return pre + (SYN_PRESETS[p.preset] || ['シンセ'])[0];
   return pre + (INST[I.type] || { n: '' }).n;
 }
@@ -4856,14 +4856,14 @@ function instCard(tr) {
     const P2 = I.p, font = P2.font || 'msg';
     sels.appendChild(selectCtl('音源', [['piano', 'グランドピアノ（Salamander）'], ['sf2', '楽器（SoundFont）'], ['kit', 'ドラムキット（SoundFont）']], P2.lib, v => { act(() => { tr.inst.p = recInstDefaults(v, undefined, P2.font); }); ensureLibs(); }));
     if (P2.lib !== 'piano') {
-      const fonts = [...Object.entries(FONTS).filter(([k]) => !(k === 'gx' && P2.lib === 'kit')).map(([k, f]) => [k, f.n + (k === 'msg' ? '（おすすめ）' : '')]), ...LIB.user.map(n => ['u:' + n, '★ ' + n])];
-      sels.appendChild(selectCtl('SoundFont', fonts, font, v => { act(() => { P2.font = v; P2.bank = 0; if (v === 'gx' && typeof GX_LIST !== 'undefined' && !GX_LIST.some(x => x[0] === Number(P2.prog))) P2.prog = 0; if (v.startsWith('u:')) { const sf = fontOf(P2); const cand = sf ? [...sf.presets.values()].filter(x => (x.bank >= 128) === (P2.lib === 'kit')).sort((a, b) => a.bank - b.bank || a.prog - b.prog) : [], first = cand.find(x => x.prog === P2.prog && (P2.lib === 'kit' || x.bank === (P2.bank || 0))) || cand[0]; if (first) { P2.prog = first.prog; P2.bank = first.bank >= 128 ? 0 : first.bank; } } }); ensureLibs(); }));
+      const fonts = [...Object.entries(FONTS).filter(([k]) => !((k === 'gx' || k === 'gb') && P2.lib === 'kit')).map(([k, f]) => [k, f.n + (k === 'msg' ? '（おすすめ）' : '')]), ...LIB.user.map(n => ['u:' + n, '★ ' + n])];
+      sels.appendChild(selectCtl('SoundFont', fonts, font, v => { act(() => { P2.font = v; P2.bank = 0; if (v === 'gx' && typeof GX_LIST !== 'undefined' && !GX_LIST.some(x => x[0] === Number(P2.prog))) P2.prog = 0; if (v === 'gb' && Number(P2.prog) > 6) P2.prog = 5; if (v.startsWith('u:')) { const sf = fontOf(P2); const cand = sf ? [...sf.presets.values()].filter(x => (x.bank >= 128) === (P2.lib === 'kit')).sort((a, b) => a.bank - b.bank || a.prog - b.prog) : [], first = cand.find(x => x.prog === P2.prog && (P2.lib === 'kit' || x.bank === (P2.bank || 0))) || cand[0]; if (first) { P2.prog = first.prog; P2.bank = first.bank >= 128 ? 0 : first.bank; } } }); ensureLibs(); }));
       const sf = fontOf(P2);
       if (font.startsWith('u:')) {
         // your own SoundFont: list what is actually inside it
         const list = sf ? [...sf.presets.values()].filter(x => (x.bank >= 128) === (P2.lib === 'kit')).sort((a, b) => a.bank - b.bank || a.prog - b.prog) : [];
         sels.appendChild(selectCtl(P2.lib === 'kit' ? 'キット' : '楽器', list.length ? list.map(x => [x.bank + ':' + x.prog, x.name.trim() || ('#' + x.prog)]) : [['0:0', '（読み込み中）']], (P2.lib === 'kit' ? 128 : P2.bank || 0) + ':' + P2.prog, v => { const [b, pr] = v.split(':').map(Number); act(() => { P2.prog = pr; if (P2.lib !== 'kit') P2.bank = b; }, { live: true }); ensureLibs(); }));
-      } else if (P2.lib === 'sf2') sels.appendChild(selectCtl('楽器', font === 'gx' ? GX_LIST.map(([p, n, c]) => [String(p), c + '：' + n]) : GM_MENU.flatMap(([cat, l]) => l.map(([p, n]) => [String(p), cat + '：' + n])), String(P2.prog), v => { act(() => { relevel(P2, 'sf2:' + P2.prog, 'sf2:' + v); P2.prog = Number(v); }); ensureLibs(); }));
+      } else if (P2.lib === 'sf2') sels.appendChild(selectCtl('楽器', font === 'gx' ? GX_LIST.map(([p, n, c]) => [String(p), c + '：' + n]) : font === 'gb' ? GB_LIST.map(([p, n]) => [String(p), 'ブラス：' + n]) : GM_MENU.flatMap(([cat, l]) => l.map(([p, n]) => [String(p), cat + '：' + n])), String(P2.prog), v => { act(() => { relevel(P2, 'sf2:' + P2.prog, 'sf2:' + v); P2.prog = Number(v); }); ensureLibs(); }));
       else sels.appendChild(selectCtl('キット', GM_KITS.map(([p, n]) => [String(p), n]), String(P2.prog), v => { act(() => { relevel(P2, 'kit:' + P2.prog, 'kit:' + v); P2.prog = Number(v); }); ensureLibs(); }));
     }
     if (P2.lib !== 'kit') sels.appendChild(selectCtl('打鍵音（コツン）', [['on', 'あり'], ['off', 'なし（やわらかく弾く）']], P2.thump || 'on', v => act(() => { P2.thump = v; }, { live: true })));
@@ -6115,7 +6115,7 @@ function changeInstFromBrowser(tr) {
     act(() => { tr.inst = itemInst(it); });
     if (it.type === 'pads') ensurePadKit(tr).then(() => renderInsp());
     ensureLibs();
-  }, { type: tr.inst.type, preset: tr.inst.type === 'rec' ? (tr.inst.p.lib === 'piano' ? 'piano' : (tr.inst.p.lib === 'kit' ? 'kit:' : tr.inst.p.font === 'gx' ? 'gx:' : 'sf2:') + tr.inst.p.prog) : tr.inst.p.preset });
+  }, { type: tr.inst.type, preset: tr.inst.type === 'rec' ? (tr.inst.p.lib === 'piano' ? 'piano' : (tr.inst.p.lib === 'kit' ? 'kit:' : tr.inst.p.font === 'gx' ? 'gx:' : tr.inst.p.font === 'gb' ? 'gb:' : 'sf2:') + tr.inst.p.prog) : tr.inst.p.preset });
 }
 
 /* ============ "new track" screen like BandLab: big instrument tiles, one click = a track with that sound ============ */
@@ -6155,7 +6155,8 @@ function addShortcutTiles(m) {
       ['ビルドアップ・効果音', 'スネアロール・ライザー・インパクト', '#c49aff', tr(() => { const r = m.getBoundingClientRect(); setTimeout(() => transitionMenu({ x: r.left + 40, y: r.top + 80 }), 0); })],
       ['リリースカットピアノ', '音がスパッと切れるピアノ 4小節', '#7aa2ff', tr(() => addReleaseCutPiano())],
     ],
-    cc0: (typeof GX_LIST !== 'undefined' ? GX_LIST : []).map(([p, n, c]) => [n, c, GX_COLORS[c] || '#8a9bff', () => makeInstTrack(n.replace(/（.*/, ''), newInst('rec', 'gx:' + p))]),
+    cc0: [...(typeof GB_LIST !== 'undefined' ? GB_LIST : []).map(([p, n]) => [n, 'ブラス', '#ffd35a', () => makeInstTrack(n.replace(/（.*/, ''), newInst('rec', 'gb:' + p))]),
+      ...(typeof GX_LIST !== 'undefined' ? GX_LIST : []).map(([p, n, c]) => [n, c, GX_COLORS[c] || '#8a9bff', () => makeInstTrack(n.replace(/（.*/, ''), newInst('rec', 'gx:' + p))])],
     kit: [
       ['Sqwd Future Bass キット', 'ドラムパッド＋2小節のビート', '#7ad7ff', tr(() => addKitPads('sqwd'))],
       ['KOC ハードスタイルキック', 'ドラムパッド＋4つ打ち', '#ff8a4a', tr(() => addKitPads('koc'))],
@@ -8668,6 +8669,50 @@ const _relevelGx = relevel;
 relevel = function (p, from, to) {
   if (p.font !== 'gx') return _relevelGx(p, from, to);
   const v = s => GX_VOL[Number(String(s).split(':')[1])] || 0; p.vol = clamp(Math.round(((p.vol || 0) - v(from) + v(to)) * 2) / 2, -24, 12);
+};
+
+/* ============ brass (CC0): trumpet / trombone / horn from VS Chamber Orchestra Community Edition ============ */
+// GlassDAW-Brass.sf3 is built by extras/build_brass.py. It lives in the update repository (files/brass/, CC0)
+// and is downloaded once, then kept in the browser/app like the other sound libraries.
+FONTS.gb = { n: 'Glass DAW ブラス（CC0）', path: 'glassdaw/GlassDAW-Brass.sf3', key: 'gb-sf3' };
+const GB_URLS = [
+  'https://cdn.jsdelivr.net/gh/inuisuko35-cyber/glass-daw-update@main/files/brass/GlassDAW-Brass.sf3',
+  'https://raw.githubusercontent.com/inuisuko35-cyber/glass-daw-update/main/files/brass/GlassDAW-Brass.sf3'];
+{ const _flB = fetchLib; fetchLib = async function (path, onProgress) {
+  if (path !== FONTS.gb.path) return _flB(path, onProgress);
+  if (window.desktop && window.desktop.readLib) { try { const b = await window.desktop.readLib(path); if (b) return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); } catch (e) { } }
+  let err;
+  for (const u of GB_URLS) {
+    try {
+      const res = await fetch(u); if (!res.ok) throw new Error(res.status + ' ' + u);
+      const total = Number(res.headers.get('content-length')) || 0;
+      if (!res.body || !onProgress) return await res.arrayBuffer();
+      const rd = res.body.getReader(), parts = []; let got = 0;
+      for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; onProgress(got, total); }
+      const out = new Uint8Array(got); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
+      return out.buffer;
+    } catch (e) { err = e; }
+  }
+  throw err;
+}; }
+const GB_LIST = [
+  [5, 'シティポップ・ブラス（スタブ）'], [6, 'ブラスセクション（のばす）'],
+  [1, 'トランペット（短く・スタブ）'], [0, 'トランペット（のばす）'],
+  [3, 'トロンボーン（短く・スタブ）'], [2, 'トロンボーン（のばす）'], [4, 'フレンチホルン（のばす）'],
+];
+// loudness match (dB) so each one starts at about the same level
+const GB_VOL = [0, 0, 0, 0, 0, -2, -2];
+const _instDefaultsGb = instDefaults;
+instDefaults = function (type, preset) {
+  if (type === 'rec' && /^gb:\d+$/.test(String(preset))) { const pr = Number(String(preset).slice(3)), o = recInstDefaults('sf2', pr, 'gb'); o.vol = GB_VOL[pr] || 0; return o; }
+  return _instDefaultsGb(type, preset);
+};
+const _browserItemsGb = browserItems;
+browserItems = function () { const out = _browserItemsGb(); for (const [p, n] of GB_LIST) out.push({ cat: 'ブラス（CC0）', name: n, type: 'rec', preset: 'gb:' + p, star: true }); return out; };
+const _relevelGb = relevel;
+relevel = function (p, from, to) {
+  if (p.font !== 'gb') return _relevelGb(p, from, to);
+  const v = s => GB_VOL[Number(String(s).split(':')[1])] || 0; p.vol = clamp(Math.round(((p.vol || 0) - v(from) + v(to)) * 2) / 2, -24, 12);
 };
 
 /* ============ TST wavetables (TendonCutter Spectral Tables Vol.1) — ui's personal copy, shipped in kits/tst, not for redistribution ============

@@ -1,0 +1,4 @@
+GlassDAW-Brass.sf3
+Built from VS Chamber Orchestra: Community Edition brass (trumpet, tenor trombone, F horn)
+by Versilian Studios (Sam Gossner, Simon Dalzell), released under CC0 1.0.
+https://github.com/sgossner/VSCO-2-CE
