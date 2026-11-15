@@ -1,8 +1,8 @@
 {
- "build": 202611141333,
- "sha256": "22b0562cfe1d0fe429ce0cb854337ea868f98da974f62f61b948bfc002b54fed",
+ "build": 202611150544,
+ "sha256": "66d95f284ce52609e73712b6d28845b04e3927113a00de7093a312dc32411ee7",
  "shell": 2,
- "note": "80sポップドラム（ゲートスネア・タム・シティポップのビート）を追加。音は追加zipで入れます",
+ "note": "フルート音源（CC0の生録音：ビブラート・まっすぐ・短く）を追加",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
