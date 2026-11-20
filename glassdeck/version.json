@@ -1,5 +1,5 @@
 {
- "build": 7,
- "sha256": "4060af940bf034b90540f7100272ac62891eba99f2f9bf18c0447f25eaa1ffc1",
- "note": "上のバーをWindows標準に戻し、粒を右端へ"
+ "build": 8,
+ "sha256": "cfeb6c5df31636e459c7846b9f1df74f5f6a46878fad6889d6c587d0998cb57f",
+ "note": "小窓をドラッグで動かせるように"
 }
