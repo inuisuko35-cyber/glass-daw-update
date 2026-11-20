@@ -1,5 +1,5 @@
 {
- "build": 12,
- "sha256": "3dda3d7292ea659f1d7d116e7ca94b8e8a18db3755525948cfb7b17c7f5a9f3c",
- "note": "小窓の上に「つまみ」（タップで移動モード）"
+ "build": 13,
+ "sha256": "8053bfce9c42cde20ec3c620d3c62ed62f0effdc606651ad9f33321efad7bc57",
+ "note": "YouTubeが「続きを視聴しますか？」で止まらないように"
 }
