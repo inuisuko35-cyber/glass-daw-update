@@ -1,5 +1,5 @@
 {
- "build": 9,
- "sha256": "473286c465fe0879c64ed3fc056f3eaa5fb263fcd06b6ab9accbc88097e8752f",
- "note": "小窓のドラッグを修正・再起動で更新"
+ "build": 10,
+ "sha256": "54bd109ae46a8a3669ed4b9f714082460acff5263bffc25feecb45555b875a57",
+ "note": "小窓に「動かす」ボタン（タッチパッド向け）"
 }
