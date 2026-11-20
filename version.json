@@ -1,8 +1,8 @@
 {
- "build": 202611150544,
- "sha256": "66d95f284ce52609e73712b6d28845b04e3927113a00de7093a312dc32411ee7",
+ "build": 202611200216,
+ "sha256": "3702a5cc6346a3ae7cfb7199396500b7cae2a10e38aaac8e58ad87b6ebb5df66",
  "shell": 2,
- "note": "フルート音源（CC0の生録音：ビブラート・まっすぐ・短く）を追加",
+ "note": "Minimal Audio - STATIC（140BPMのシンセ・ベース・ドラム・アトモス）を追加。音は追加zipで入れます",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
