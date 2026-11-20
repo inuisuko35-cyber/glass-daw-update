@@ -1,5 +1,5 @@
 {
- "build": 6,
- "sha256": "319ac52fa20f27e359f9af50e7f009f37103b56a639deed47ac4abd6d3a480d4",
+ "build": 7,
+ "sha256": "4060af940bf034b90540f7100272ac62891eba99f2f9bf18c0447f25eaa1ffc1",
  "note": "上のバーをWindows標準に戻し、粒を右端へ"
 }
