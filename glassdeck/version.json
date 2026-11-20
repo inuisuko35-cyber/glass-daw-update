@@ -1,5 +1,5 @@
 {
- "build": 8,
- "sha256": "cfeb6c5df31636e459c7846b9f1df74f5f6a46878fad6889d6c587d0998cb57f",
- "note": "小窓をドラッグで動かせるように"
+ "build": 9,
+ "sha256": "473286c465fe0879c64ed3fc056f3eaa5fb263fcd06b6ab9accbc88097e8752f",
+ "note": "小窓のドラッグを修正・再起動で更新"
 }
