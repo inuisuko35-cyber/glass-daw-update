@@ -1,5 +1,5 @@
 {
- "build": 13,
- "sha256": "8053bfce9c42cde20ec3c620d3c62ed62f0effdc606651ad9f33321efad7bc57",
- "note": "YouTubeが「続きを視聴しますか？」で止まらないように"
+ "build": 14,
+ "sha256": "ee85b1b4b5838898651a24f6c95a5954b47a5274ac8adc5f80e8fc4290fc66d2",
+ "note": "粒にアイコンを全部出したままにするモード"
 }
