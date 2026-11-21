@@ -1,8 +1,8 @@
 {
- "build": 202611200216,
- "sha256": "3702a5cc6346a3ae7cfb7199396500b7cae2a10e38aaac8e58ad87b6ebb5df66",
+ "build": 202611210439,
+ "sha256": "9607e53ee9e6d17e4b18aa66b099fe32a165df53b8863bf0e1ccf0985f9d23f5",
  "shell": 2,
- "note": "Minimal Audio - STATIC（140BPMのシンセ・ベース・ドラム・アトモス）を追加。音は追加zipで入れます",
+ "note": "TCPS（150BPMのベース一発・ベースループ・ハードキック・FX）を追加。音は追加zipで入れます",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
