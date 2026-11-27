@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611270814">
+<meta name="gd-build" content="202611270857">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -3006,7 +3006,7 @@ function trackSub(tr) {
   const g = groupOf(tr), pre = g ? '→' + g.name + '　' : '';
   if (tr.type === 'audio') return pre + 'オーディオ'; if (tr.type === 'bus') return tr.grp ? 'グループ（' + P.tracks.filter(t => t.out === tr.id).length + 'トラック）' : 'リターン';
   const I = tr.inst; if (!I) return pre; const p = I.p || {};
-  if (I.type === 'rec') return pre + (p.lib === 'piano' ? 'グランドピアノ' : p.lib === 'kit' ? 'ドラムキット' : (p.font === 'gx' && typeof GX_LIST !== 'undefined' ? (GX_LIST.find(x => x[0] === Number(p.prog)) || [0, '追加音源'])[1] : p.font === 'gb' && typeof GB_LIST !== 'undefined' ? (GB_LIST.find(x => x[0] === Number(p.prog)) || [0, 'ブラス'])[1] : p.font && p.font.startsWith('u:') ? p.font.slice(2) : (GM_NAMES[p.prog] || '楽器')));
+  if (I.type === 'rec') return pre + (p.lib === 'piano' ? 'グランドピアノ' : p.lib === 'kit' ? (p.font === 'gd' && typeof GD_KITS !== 'undefined' ? (GD_KITS.find(x => x[0] === Number(p.prog)) || [0, '生ドラム'])[1] : 'ドラムキット') : (p.font === 'gx' && typeof GX_LIST !== 'undefined' ? (GX_LIST.find(x => x[0] === Number(p.prog)) || [0, '追加音源'])[1] : p.font === 'gb' && typeof GB_LIST !== 'undefined' ? (GB_LIST.find(x => x[0] === Number(p.prog)) || [0, 'ブラス'])[1] : p.font && p.font.startsWith('u:') ? p.font.slice(2) : (GM_NAMES[p.prog] || '楽器')));
   if (I.type === 'synth') return pre + (SYN_PRESETS[p.preset] || ['シンセ'])[0];
   return pre + (INST[I.type] || { n: '' }).n;
 }
@@ -4444,11 +4444,23 @@ async function sfPrepare(sf, bank, prog) {
 const tc2s = tc => tc == null ? 0.001 : Math.pow(2, tc / 1200);
 
 /* ---------- voices ---------- */
+// fonts that mark round robins (zones with the same key + velocity range): play one of them, in turn
+const RR_POS = new WeakMap();
+function sfRoundRobin(sf, regs) {
+  const by = new Map(); for (const r of regs) { const k = r.kr + '|' + r.vr; if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
+  if (by.size === regs.length) return regs;
+  let m = RR_POS.get(sf); if (!m) RR_POS.set(sf, m = new Map());
+  const out = [];
+  for (const [k, list] of by) { const n = (m.get(k) || 0) % list.length; m.set(k, n + 1); out.push(list[n]); }
+  return out;
+}
 const EXCL = new WeakMap(); // exclusive class (e.g. open/closed hi-hat): only one sounds at a time
 function sf2Voice(ctx, out, p, pitch, vel, t0, dur, list) {
   const sf = fontOf(p); if (!sf) return;
   const bank = recBank(p), prog = Number(p.prog), v127 = Math.round(vel * 127);
-  const regs = sfRegions(sf, bank, prog).filter(r => pitch >= r.kr[0] && pitch <= r.kr[1] && v127 >= r.vr[0] && v127 <= r.vr[1]);
+  let regs = sfRegions(sf, bank, prog).filter(r => pitch >= r.kr[0] && pitch <= r.kr[1] && v127 >= r.vr[0] && v127 <= r.vr[1]);
+  const FD = FONTS[p.font || 'msg'];
+  if (FD && FD.rr && regs.length > 1) regs = sfRoundRobin(sf, regs);
   const drum = bank === 128;
   for (const r of regs) {
     const g = r.g, s = r.s, sb = sfBuffer(sf, s, g); if (!sb) continue; // .sf3 sample still decoding
@@ -4473,7 +4485,7 @@ function sf2Voice(ctx, out, p, pitch, vel, t0, dur, list) {
     if (g[17]) { const pn = ctx.createStereoPanner(); pn.pan.value = clamp(g[17] / 500, -1, 1); amp.connect(pn); last = pn; }
     last.connect(out);
     const atten = Math.pow(10, -(Math.max(0, g[48] || 0) * 0.4) / 200);
-    const peak = atten * Math.pow(vel, 1.5) * db2g(p.vol || 0) * 0.6;
+    const peak = atten * Math.pow(vel, (FD && FD.velPow) || 1.5) * db2g(p.vol || 0) * 0.6;
     const dl = tc2s(g[33]), A = Math.max(soft ? 0.035 : 0.001, tc2s(g[34])), Hd = tc2s(g[35]), D = tc2s(g[36]), S = Math.pow(10, -Math.max(0, g[37] || 0) / 200), Rl = Math.max(drum ? 0.02 : 0.07, tc2s(g[38]) * (p.rel ?? 1));
     const looped = mode === 1 || mode === 3, oneShot = drum && !looped;
     const full = buf.duration / src.playbackRate.value;
@@ -4865,7 +4877,7 @@ function instCard(tr) {
     const P2 = I.p, font = P2.font || 'msg';
     sels.appendChild(selectCtl('音源', [['piano', 'グランドピアノ（Salamander）'], ['sf2', '楽器（SoundFont）'], ['kit', 'ドラムキット（SoundFont）']], P2.lib, v => { act(() => { tr.inst.p = recInstDefaults(v, undefined, P2.font); }); ensureLibs(); }));
     if (P2.lib !== 'piano') {
-      const fonts = [...Object.entries(FONTS).filter(([k]) => !((k === 'gx' || k === 'gb') && P2.lib === 'kit')).map(([k, f]) => [k, f.n + (k === 'msg' ? '（おすすめ）' : '')]), ...LIB.user.map(n => ['u:' + n, '★ ' + n])];
+      const fonts = [...Object.entries(FONTS).filter(([k]) => !((k === 'gx' || k === 'gb') && P2.lib === 'kit') && !(k === 'gd' && P2.lib !== 'kit')).map(([k, f]) => [k, f.n + (k === 'msg' ? '（おすすめ）' : '')]), ...LIB.user.map(n => ['u:' + n, '★ ' + n])];
       sels.appendChild(selectCtl('SoundFont', fonts, font, v => { act(() => { P2.font = v; P2.bank = 0; if (v === 'gx' && typeof GX_LIST !== 'undefined' && !GX_LIST.some(x => x[0] === Number(P2.prog))) P2.prog = 0; if (v === 'gb' && Number(P2.prog) > 9) P2.prog = 5; if (v.startsWith('u:')) { const sf = fontOf(P2); const cand = sf ? [...sf.presets.values()].filter(x => (x.bank >= 128) === (P2.lib === 'kit')).sort((a, b) => a.bank - b.bank || a.prog - b.prog) : [], first = cand.find(x => x.prog === P2.prog && (P2.lib === 'kit' || x.bank === (P2.bank || 0))) || cand[0]; if (first) { P2.prog = first.prog; P2.bank = first.bank >= 128 ? 0 : first.bank; } } }); ensureLibs(); }));
       const sf = fontOf(P2);
       if (font.startsWith('u:')) {
@@ -4873,7 +4885,7 @@ function instCard(tr) {
         const list = sf ? [...sf.presets.values()].filter(x => (x.bank >= 128) === (P2.lib === 'kit')).sort((a, b) => a.bank - b.bank || a.prog - b.prog) : [];
         sels.appendChild(selectCtl(P2.lib === 'kit' ? 'キット' : '楽器', list.length ? list.map(x => [x.bank + ':' + x.prog, x.name.trim() || ('#' + x.prog)]) : [['0:0', '（読み込み中）']], (P2.lib === 'kit' ? 128 : P2.bank || 0) + ':' + P2.prog, v => { const [b, pr] = v.split(':').map(Number); act(() => { P2.prog = pr; if (P2.lib !== 'kit') P2.bank = b; }, { live: true }); ensureLibs(); }));
       } else if (P2.lib === 'sf2') sels.appendChild(selectCtl('楽器', font === 'gx' ? GX_LIST.map(([p, n, c]) => [String(p), c + '：' + n]) : font === 'gb' ? GB_LIST.map(([p, n, c]) => [String(p), c + '：' + n]) : GM_MENU.flatMap(([cat, l]) => l.map(([p, n]) => [String(p), cat + '：' + n])), String(P2.prog), v => { act(() => { relevel(P2, 'sf2:' + P2.prog, 'sf2:' + v); P2.prog = Number(v); }); ensureLibs(); }));
-      else sels.appendChild(selectCtl('キット', GM_KITS.map(([p, n]) => [String(p), n]), String(P2.prog), v => { act(() => { relevel(P2, 'kit:' + P2.prog, 'kit:' + v); P2.prog = Number(v); }); ensureLibs(); }));
+      else sels.appendChild(selectCtl('キット', (font === 'gd' ? GD_KITS : GM_KITS).map(([p, n]) => [String(p), n]), String(P2.prog), v => { act(() => { relevel(P2, 'kit:' + P2.prog, 'kit:' + v); P2.prog = Number(v); }); ensureLibs(); }));
     }
     if (P2.lib !== 'kit') sels.appendChild(selectCtl('打鍵音（コツン）', [['on', 'あり'], ['off', 'なし（やわらかく弾く）']], P2.thump || 'on', v => act(() => { P2.thump = v; }, { live: true })));
     if (P2.lib === 'piano') sels.appendChild(selectCtl('ペダル', [['off', 'なし'], ['on', '踏む（余韻が長い）']], P2.pedal, v => act(() => { P2.pedal = v; }, { live: true })));
@@ -6054,7 +6066,7 @@ function browserItems() {
   return out;
 }
 function itemInst(it) { const I = newInst(it.type, it.preset); if (it.sub) { I.p.kit = it.sub; I.p.vol = levelOf('drums:' + it.sub); } return I; }
-const isDrumItem = it => it.type === 'drums' || it.type === 'pads' || /^kit:/.test(it.preset || '');
+const isDrumItem = it => it.type === 'drums' || it.type === 'pads' || /^(kit|gd):/.test(it.preset || '');
 
 let BR = null;
 // onPick(item) is called with the chosen item; title says what it is for
@@ -6124,7 +6136,7 @@ function changeInstFromBrowser(tr) {
     act(() => { tr.inst = itemInst(it); });
     if (it.type === 'pads') ensurePadKit(tr).then(() => renderInsp());
     ensureLibs();
-  }, { type: tr.inst.type, preset: tr.inst.type === 'rec' ? (tr.inst.p.lib === 'piano' ? 'piano' : (tr.inst.p.lib === 'kit' ? 'kit:' : tr.inst.p.font === 'gx' ? 'gx:' : tr.inst.p.font === 'gb' ? 'gb:' : 'sf2:') + tr.inst.p.prog) : tr.inst.p.preset });
+  }, { type: tr.inst.type, preset: tr.inst.type === 'rec' ? (tr.inst.p.lib === 'piano' ? 'piano' : (tr.inst.p.lib === 'kit' ? (tr.inst.p.font === 'gd' ? 'gd:' : 'kit:') : tr.inst.p.font === 'gx' ? 'gx:' : tr.inst.p.font === 'gb' ? 'gb:' : 'sf2:') + tr.inst.p.prog) : tr.inst.p.preset });
 }
 
 /* ============ "new track" screen like BandLab: big instrument tiles, one click = a track with that sound ============ */
@@ -8727,6 +8739,42 @@ relevel = function (p, from, to) {
   if (p.font !== 'gb') return _relevelGb(p, from, to);
   const v = s => GB_VOL[Number(String(s).split(':')[1])] || 0; p.vol = clamp(Math.round(((p.vol || 0) - v(from) + v(to)) * 2) / 2, -24, 12);
 };
+
+/* ============ 生ドラム (CC0): Virtuosity Drums by Versilian Studios, every mic mixed into stereo, round robins kept ============ */
+// GlassDAW-Drums.sf3 is built by extras/build_drums.py and lives in the update repository (files/drums/, CC0).
+FONTS.gd = { n: 'Glass DAW 生ドラム（CC0）', path: 'glassdaw/GlassDAW-Drums.sf3', key: 'gd-sf3', rr: true, velPow: 0.8 };
+const GD_KITS = [[0, '生ドラム（スタンダード）'], [8, '生ドラム（ルーム・広い）'], [16, '生ドラム（タイト・近い）'], [32, '生ドラム（ローファイ）']];
+const GD_URLS = [
+  'https://cdn.jsdelivr.net/gh/inuisuko35-cyber/glass-daw-update@main/files/drums/GlassDAW-Drums.sf3',
+  'https://raw.githubusercontent.com/inuisuko35-cyber/glass-daw-update/main/files/drums/GlassDAW-Drums.sf3'];
+{ const _flD = fetchLib; fetchLib = async function (path, onProgress) {
+  if (path !== FONTS.gd.path) return _flD(path, onProgress);
+  if (window.desktop && window.desktop.readLib) { try { const b = await window.desktop.readLib(path); if (b) return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); } catch (e) { } }
+  let err;
+  for (const u of GD_URLS) {
+    try {
+      const res = await fetch(u); if (!res.ok) throw new Error(res.status + ' ' + u);
+      const total = Number(res.headers.get('content-length')) || 0;
+      if (!res.body || !onProgress) return await res.arrayBuffer();
+      const rd = res.body.getReader(), parts = []; let got = 0;
+      for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; onProgress(got, total); }
+      const out = new Uint8Array(got); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
+      return out.buffer;
+    } catch (e) { err = e; }
+  }
+  throw err;
+}; }
+{
+  const _id = instDefaults;
+  instDefaults = function (type, preset) {
+    if (type === 'rec' && /^gd:\d+$/.test(String(preset))) return recInstDefaults('kit', Number(String(preset).slice(3)), 'gd');
+    return _id(type, preset);
+  };
+  const _bi = browserItems;
+  browserItems = function () { const out = _bi(); for (const [p, n] of GD_KITS) out.push({ cat: 'ドラム', name: n + '（CC0）', type: 'rec', preset: 'gd:' + p, star: true }); return out; };
+  const _rl = relevel;
+  relevel = function (p, from, to) { if (p.font === 'gd') return; return _rl(p, from, to); };
+}
 
 /* ============ TST wavetables (TendonCutter Spectral Tables Vol.1) — ui's personal copy, shipped in kits/tst, not for redistribution ============
    kits/tst/tables.json: each table = 32 frames (of the original 256) x 512 harmonics, cos + sine amplitudes as Int16 (base64),
