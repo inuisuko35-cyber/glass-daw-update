@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="gd-build" content="202611270812">
+<meta name="gd-build" content="202611270814">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Glass DAW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -10805,6 +10805,93 @@ duckGraph = function (f) {
   };
   return { el: w, draw };
 };
+
+/* ---------- ピアノロールのはさみツール ---------- */
+// click a note = cut it there (selected notes are cut together), drag up/down = cut every note the line crosses, Shift = off the grid
+{
+  const btn = el('button', '', '✂ はさみ'); btn.id = 'rCut';
+  btn.title = 'はさみツール (C)：音をクリックでその位置で切る（選んだ音はまとめて切る）／上下にドラッグで線が通った音を全部切る／Shiftでグリッドを無視';
+  $('#rPen').after(btn);
+  R.cut = false;
+  const _setPen = setPen;
+  const setCut = on => {
+    R.cut = on; btn.classList.toggle('on', on);
+    if (on) { $('#rPen').classList.remove('on'); $('#rPtr').classList.remove('on'); $('#rHint').title = btn.title; }
+    else _setPen(R.pen);
+    R.cutAt = null; R.dirty = true;
+  };
+  setPen = function (on) { R.cut = false; btn.classList.remove('on'); R.cutAt = null; _setPen(on); };
+  btn.onclick = () => setCut(!R.cut);
+
+  const cutBeat = (x, free) => { const f = rollClip(), b = rB(x), min = f ? f.c.offset / cbs(f.c) : 0; return Math.max(min, free ? b : rsnap(b)); };
+  // split notes (indices) at beat b; returns how many were cut
+  function cutNotes(c, idx, b) {
+    let n = 0; const add = [];
+    for (const i of idx) { const o = c.notes[i]; if (!o || !(o.t < b - 0.01 && o.t + o.d > b + 0.01)) continue; add.push({ ...o, t: b, d: o.t + o.d - b }); o.d = b - o.t; n++; }
+    if (add.length) { c.notes.push(...add); R.sel.clear(); }
+    return n;
+  }
+  const inGrid = (x, y) => x > R.keyW && y > R.rulerH && y < velTop();
+  const host = rsc.parentNode;
+  host.addEventListener('pointerdown', e => {
+    if (!R.cut || e.button !== 0 || !rollClip()) return;
+    const { x, y } = rPos(e); if (!inGrid(x, y)) return;
+    e.stopPropagation(); e.preventDefault();
+    R.cutDrag = { b: cutBeat(x, e.shiftKey), x0: x, y0: y, y1: y, id: e.pointerId };
+    try { rsc.setPointerCapture(e.pointerId); } catch (er) {}
+    R.dirty = true;
+  }, true);
+  host.addEventListener('dblclick', e => { if (R.cut) { e.stopPropagation(); e.preventDefault(); } }, true);
+  rsc.addEventListener('pointermove', e => {
+    if (!R.cut) return;
+    const { x, y } = rPos(e);
+    if (R.cutDrag) { R.cutDrag.y1 = clamp(y, R.rulerH, velTop()); R.dirty = true; rsc.style.cursor = 'crosshair'; return; }
+    const at = inGrid(x, y) ? { b: cutBeat(x, e.shiftKey), y } : null;
+    if (JSON.stringify(at) !== JSON.stringify(R.cutAt)) { R.cutAt = at; R.dirty = true; }
+    if (inGrid(x, y)) rsc.style.cursor = 'crosshair';
+  });
+  rsc.addEventListener('pointerleave', () => { if (R.cutAt) { R.cutAt = null; R.dirty = true; } });
+  const up = e => {
+    const D = R.cutDrag; if (!D) return; R.cutDrag = null; R.dirty = true;
+    const f = rollClip(); if (!f) return; const { c } = f;
+    let idx;
+    if (Math.abs(D.y1 - D.y0) >= R.rowH) {
+      // a line: every note between the two rows that spans the cut
+      const y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
+      idx = c.notes.map((n, i) => i).filter(i => { const ny = rY(c.notes[i].p); return ny + R.rowH > y0 && ny < y1; });
+    } else {
+      const h = rollHit(D.x0, D.y0); if (h.i == null) return;
+      idx = R.sel.has(h.i) && R.sel.size > 1 ? [...R.sel] : [h.i];
+      // clicking right on a note's start would do nothing; cut at the mouse instead
+      const n = c.notes[h.i]; if (!(n.t < D.b - 0.01 && n.t + n.d > D.b + 0.01)) D.b = rB(D.x0);
+    }
+    let cnt = 0;
+    begin(); cnt = cutNotes(c, idx, D.b);
+    if (cnt) { end({ live: true }); UI.dirty = true; } else { H.pend = null; }
+  };
+  rsc.addEventListener('pointerup', up, true); rsc.addEventListener('pointercancel', () => { R.cutDrag = null; R.dirty = true; }, true);
+
+  // the cut line
+  const _draw = drawRoll;
+  drawRoll = function () {
+    _draw();
+    if (!R.cut || !R.open) return;
+    const x = rcx, D = R.cutDrag, a = D ? D : R.cutAt; if (!a) return;
+    const gx = Math.round(rX(a.b)) + .5;
+    x.save(); x.strokeStyle = '#ffd36a'; x.lineWidth = 1.5; x.setLineDash([4, 3]); x.beginPath();
+    if (D && Math.abs(D.y1 - D.y0) >= 2) { x.moveTo(gx, D.y0); x.lineTo(gx, D.y1); }
+    else { const h = rollHit(rX(a.b), a.y), f = rollClip(); if (h.i != null && f) { const ny = rY(f.c.notes[h.i].p); x.moveTo(gx, ny - 3); x.lineTo(gx, ny + R.rowH + 3); } else { x.moveTo(gx, a.y - R.rowH); x.lineTo(gx, a.y + R.rowH); } }
+    x.stroke(); x.restore();
+  };
+
+  // C toggles the scissors (Ctrl+C is still copy)
+  const _key = rollKey;
+  rollKey = function (e) {
+    if (!(e.ctrlKey || e.metaKey || e.altKey) && e.key.toLowerCase() === 'c' && !e.repeat) { setCut(!R.cut); return true; }
+    if (e.key === 'Escape' && R.cut && !R.sel.size) { setCut(false); return true; }
+    return _key(e);
+  };
+}
 
 /* ============ top bar wiring ============ */
 $('#play').onclick = togglePlay;
