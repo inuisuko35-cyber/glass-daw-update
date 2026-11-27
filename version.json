@@ -1,8 +1,8 @@
 {
- "build": 202611270814,
- "sha256": "a234b02346ec4b1aad3d10f4bd0858adc19c32f7aa7ebb08750dee2c733fc96f",
+ "build": 202611270857,
+ "sha256": "f7154d81536d4d81806fc73580f473b80240988fd1a15ae8ff6695870e05fdb5",
  "shell": 2,
- "note": "ピアノロールにはさみツール（C）：音をクリックで切る・上下ドラッグで線が通った音をまとめて切る・Shiftでグリッド無視",
+ "note": "生ドラム音源を追加（CC0・Virtuosity Drums）：スタンダード/ルーム/タイト/ローファイの4キット、強さ8段階、同じ音の連打は自動で別テイク",
  "files": [
   {
    "p": "vital-presets/GD Aqua Wub Chords.vital",
